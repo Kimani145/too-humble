@@ -1,0 +1,46 @@
+{
+  "expo": {
+    "name": "Too Humble",
+    "slug": "too-humble",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "toohumble",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "image": "./assets/images/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#1A2B5E"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.toohumble.app"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "backgroundColor": "#1A2B5E"
+      },
+      "package": "com.toohumble.app"
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static",
+      "favicon": "./assets/images/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Too Humble needs access to your photos to share faith content with the community.",
+          "cameraPermission": "Too Humble needs camera access to capture and share faith moments."
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
