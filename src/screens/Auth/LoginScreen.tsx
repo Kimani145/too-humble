@@ -1,9 +1,10 @@
 // =============================================================================
 // TOO HUMBLE - LOGIN SCREEN
 // Checks active sessions, routes admin vs client, validates inputs
+// Split-panel layout on web/desktop (width >= 768); unchanged on mobile/native
 // =============================================================================
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -16,14 +17,32 @@ import {
   ScrollView,
   Alert,
   ActivityIndicator,
-  Dimensions,
+  Animated,
+  useWindowDimensions,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../../context/AuthContext';
 import { COLORS, TYPOGRAPHY, SPACING, BORDER_RADIUS, SHADOWS } from '../../constants/theme';
 
-const { width } = Dimensions.get('window');
+// -----------------------------------------------------------------------
+// Rotating verse data (desktop right panel only)
+// -----------------------------------------------------------------------
+interface PanelQuote {
+  text: string;
+  reference: string;
+}
+
+const PANEL_QUOTES: PanelQuote[] = [
+  { text: 'Trust in the Lord with all your heart and lean not on your own understanding.', reference: 'Proverbs 3:5' },
+  { text: 'I can do all things through Christ who strengthens me.', reference: 'Philippians 4:13' },
+  { text: 'Be still, and know that I am God.', reference: 'Psalm 46:10' },
+  { text: 'The Lord is my shepherd; I shall not want.', reference: 'Psalm 23:1' },
+  { text: 'For God so loved the world that he gave his one and only Son.', reference: 'John 3:16' },
+  { text: 'Let your light shine before others, that they may see your good deeds.', reference: 'Matthew 5:16' },
+  { text: 'Humility is the foundation of all other virtues.', reference: '— St. Augustine' },
+  { text: 'The soul is made for God, and it will not rest until it rests in Him.', reference: '— St. Augustine' },
+];
 
 // -----------------------------------------------------------------------
 // Validation helpers
@@ -48,6 +67,9 @@ function validatePassword(password: string): string | null {
 export default function LoginScreen(): React.JSX.Element {
   const router = useRouter();
   const { login, loginWithGoogle, isLoading, isAuthenticated, role } = useAuth();
+  const { width } = useWindowDimensions();
+
+  const isDesktop: boolean = Platform.OS === 'web' && width >= 768;
 
   const [email, setEmail] = useState<string>('');
   const [password, setPassword] = useState<string>('');
@@ -55,6 +77,29 @@ export default function LoginScreen(): React.JSX.Element {
   const [emailError, setEmailError] = useState<string | null>(null);
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+
+  // Rotating verse state (desktop only)
+  const [quoteIndex, setQuoteIndex] = useState<number>(0);
+  const fadeAnim = useRef<Animated.Value>(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    if (!isDesktop) return;
+    const interval = setInterval(() => {
+      Animated.timing(fadeAnim, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: false,
+      }).start(() => {
+        setQuoteIndex((prev) => (prev + 1) % PANEL_QUOTES.length);
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 400,
+          useNativeDriver: false,
+        }).start();
+      });
+    }, 7000);
+    return () => clearInterval(interval);
+  }, [isDesktop, fadeAnim]);
 
   // Redirect if already authenticated
   useEffect(() => {
@@ -103,7 +148,7 @@ export default function LoginScreen(): React.JSX.Element {
   }, [loginWithGoogle]);
 
   const handleForgotPassword = useCallback((): void => {
-    router.push('/auth/forgot-password' as any);
+    router.push('/auth/forgot-password' as never);
   }, [router]);
 
   // ----------------------------------------------------------------
@@ -111,6 +156,174 @@ export default function LoginScreen(): React.JSX.Element {
   // ----------------------------------------------------------------
   const isBusy = isSubmitting || isLoading;
 
+  // ----------------------------------------------------------------
+  // Form content (shared between mobile and desktop)
+  // ----------------------------------------------------------------
+  const formContent = (
+    <>
+      <Text style={styles.heading}>Welcome Back!</Text>
+      <Text style={styles.subheading}>Sign in to continue</Text>
+
+      {/* Email field */}
+      <View style={styles.fieldGroup}>
+        <Text style={styles.label}>Email or Phone</Text>
+        <View style={[styles.inputWrapper, emailError ? styles.inputError : null]}>
+          <TextInput
+            style={styles.input}
+            value={email}
+            onChangeText={(t) => {
+              setEmail(t);
+              if (emailError) setEmailError(null);
+            }}
+            placeholder="yourname@email.com"
+            placeholderTextColor={COLORS.midGray}
+            autoCapitalize="none"
+            keyboardType="email-address"
+            autoComplete="email"
+            textContentType="emailAddress"
+            returnKeyType="next"
+            editable={!isBusy}
+          />
+        </View>
+        {emailError && <Text style={styles.errorText}>{emailError}</Text>}
+      </View>
+
+      {/* Password field */}
+      <View style={styles.fieldGroup}>
+        <Text style={styles.label}>Password</Text>
+        <View style={[styles.inputWrapper, passwordError ? styles.inputError : null]}>
+          <TextInput
+            style={styles.input}
+            value={password}
+            onChangeText={(t) => {
+              setPassword(t);
+              if (passwordError) setPasswordError(null);
+            }}
+            placeholder="••••••••"
+            placeholderTextColor={COLORS.midGray}
+            secureTextEntry={!showPassword}
+            autoComplete="password"
+            textContentType="password"
+            returnKeyType="done"
+            onSubmitEditing={handleLogin}
+            editable={!isBusy}
+          />
+          <TouchableOpacity
+            onPress={() => setShowPassword((v) => !v)}
+            style={styles.eyeButton}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Text style={styles.eyeIcon}>{showPassword ? '🙈' : '👁️'}</Text>
+          </TouchableOpacity>
+        </View>
+        {passwordError && <Text style={styles.errorText}>{passwordError}</Text>}
+      </View>
+
+      {/* Forgot password */}
+      <TouchableOpacity
+        onPress={handleForgotPassword}
+        style={styles.forgotContainer}
+      >
+        <Text style={styles.forgotText}>Forgot password?</Text>
+      </TouchableOpacity>
+
+      {/* Login button */}
+      <TouchableOpacity
+        style={[styles.loginButton, isBusy ? styles.buttonDisabled : null]}
+        onPress={handleLogin}
+        disabled={isBusy}
+        activeOpacity={0.85}
+      >
+        {isBusy ? (
+          <ActivityIndicator color={COLORS.white} />
+        ) : (
+          <Text style={styles.loginButtonText}>Login</Text>
+        )}
+      </TouchableOpacity>
+
+      {/* Divider */}
+      <View style={styles.dividerRow}>
+        <View style={styles.dividerLine} />
+        <Text style={styles.dividerText}>or</Text>
+        <View style={styles.dividerLine} />
+      </View>
+
+      {/* Google sign-in */}
+      <TouchableOpacity
+        style={[styles.googleButton, isDesktop ? styles.googleButtonDesktop : null]}
+        onPress={handleGoogleLogin}
+        disabled={isBusy}
+        activeOpacity={0.85}
+      >
+        <Text style={styles.googleIcon}>G</Text>
+        <Text style={styles.googleButtonText}>Continue with Google</Text>
+      </TouchableOpacity>
+
+      {/* Register link */}
+      <View style={styles.registerRow}>
+        <Text style={styles.registerText}>Don't have an account? </Text>
+        <TouchableOpacity onPress={() => router.push('/auth/register')}>
+          <Text style={styles.registerLink}>Sign up</Text>
+        </TouchableOpacity>
+      </View>
+    </>
+  );
+
+  // ----------------------------------------------------------------
+  // Desktop split-panel layout
+  // ----------------------------------------------------------------
+  if (isDesktop) {
+    const currentQuote: PanelQuote = PANEL_QUOTES[quoteIndex];
+    return (
+      <View style={desktopStyles.root}>
+        <StatusBar barStyle="light-content" backgroundColor={COLORS.primary} />
+
+        {/* Left panel — form */}
+        <View style={desktopStyles.leftPanel}>
+          <ScrollView
+            contentContainerStyle={desktopStyles.leftContent}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            {formContent}
+          </ScrollView>
+        </View>
+
+        {/* Right panel — brand + rotating verse */}
+        <LinearGradient
+          colors={[COLORS.primary, COLORS.primaryDark]}
+          style={desktopStyles.rightPanel}
+        >
+          <Text style={desktopStyles.crossMotif}>✝</Text>
+
+          <Text style={desktopStyles.brandName}>TOO HUMBLE</Text>
+          <Text style={desktopStyles.brandTagline}>Grow in faith daily ♡</Text>
+
+          <Animated.View style={[desktopStyles.verseContainer, { opacity: fadeAnim }]}>
+            <Text style={desktopStyles.verseText}>"{currentQuote.text}"</Text>
+            <Text style={desktopStyles.verseRef}>— {currentQuote.reference}</Text>
+          </Animated.View>
+
+          {/* Dot indicators */}
+          <View style={desktopStyles.dotsRow}>
+            {PANEL_QUOTES.map((_q, i) => (
+              <View
+                key={i}
+                style={[
+                  desktopStyles.dot,
+                  i === quoteIndex ? desktopStyles.dotActive : null,
+                ]}
+              />
+            ))}
+          </View>
+        </LinearGradient>
+      </View>
+    );
+  }
+
+  // ----------------------------------------------------------------
+  // Mobile / native layout (unchanged)
+  // ----------------------------------------------------------------
   return (
     <KeyboardAvoidingView
       style={styles.flex}
@@ -136,118 +349,14 @@ export default function LoginScreen(): React.JSX.Element {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.heading}>Welcome Back!</Text>
-        <Text style={styles.subheading}>Sign in to continue</Text>
-
-        {/* Email field */}
-        <View style={styles.fieldGroup}>
-          <Text style={styles.label}>Email or Phone</Text>
-          <View style={[styles.inputWrapper, emailError ? styles.inputError : null]}>
-            <TextInput
-              style={styles.input}
-              value={email}
-              onChangeText={(t) => {
-                setEmail(t);
-                if (emailError) setEmailError(null);
-              }}
-              placeholder="yourname@email.com"
-              placeholderTextColor={COLORS.midGray}
-              autoCapitalize="none"
-              keyboardType="email-address"
-              autoComplete="email"
-              textContentType="emailAddress"
-              returnKeyType="next"
-              editable={!isBusy}
-            />
-          </View>
-          {emailError && <Text style={styles.errorText}>{emailError}</Text>}
-        </View>
-
-        {/* Password field */}
-        <View style={styles.fieldGroup}>
-          <Text style={styles.label}>Password</Text>
-          <View style={[styles.inputWrapper, passwordError ? styles.inputError : null]}>
-            <TextInput
-              style={styles.input}
-              value={password}
-              onChangeText={(t) => {
-                setPassword(t);
-                if (passwordError) setPasswordError(null);
-              }}
-              placeholder="••••••••"
-              placeholderTextColor={COLORS.midGray}
-              secureTextEntry={!showPassword}
-              autoComplete="password"
-              textContentType="password"
-              returnKeyType="done"
-              onSubmitEditing={handleLogin}
-              editable={!isBusy}
-            />
-            <TouchableOpacity
-              onPress={() => setShowPassword((v) => !v)}
-              style={styles.eyeButton}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <Text style={styles.eyeIcon}>{showPassword ? '🙈' : '👁️'}</Text>
-            </TouchableOpacity>
-          </View>
-          {passwordError && <Text style={styles.errorText}>{passwordError}</Text>}
-        </View>
-
-        {/* Forgot password */}
-        <TouchableOpacity
-          onPress={handleForgotPassword}
-          style={styles.forgotContainer}
-        >
-          <Text style={styles.forgotText}>Forgot password?</Text>
-        </TouchableOpacity>
-
-        {/* Login button */}
-        <TouchableOpacity
-          style={[styles.loginButton, isBusy ? styles.buttonDisabled : null]}
-          onPress={handleLogin}
-          disabled={isBusy}
-          activeOpacity={0.85}
-        >
-          {isBusy ? (
-            <ActivityIndicator color={COLORS.white} />
-          ) : (
-            <Text style={styles.loginButtonText}>Login</Text>
-          )}
-        </TouchableOpacity>
-
-        {/* Divider */}
-        <View style={styles.dividerRow}>
-          <View style={styles.dividerLine} />
-          <Text style={styles.dividerText}>or</Text>
-          <View style={styles.dividerLine} />
-        </View>
-
-        {/* Google sign-in */}
-        <TouchableOpacity
-          style={styles.googleButton}
-          onPress={handleGoogleLogin}
-          disabled={isBusy}
-          activeOpacity={0.85}
-        >
-          <Text style={styles.googleIcon}>G</Text>
-          <Text style={styles.googleButtonText}>Continue with Google</Text>
-        </TouchableOpacity>
-
-        {/* Register link */}
-        <View style={styles.registerRow}>
-          <Text style={styles.registerText}>Don't have an account? </Text>
-          <TouchableOpacity onPress={() => router.push('/auth/register')}>
-            <Text style={styles.registerLink}>Sign up</Text>
-          </TouchableOpacity>
-        </View>
+        {formContent}
       </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
 // -----------------------------------------------------------------------
-// Styles
+// Mobile / shared styles
 // -----------------------------------------------------------------------
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: COLORS.white },
@@ -385,7 +494,9 @@ const styles = StyleSheet.create({
     height: 54,
     backgroundColor: COLORS.white,
     ...SHADOWS.sm,
-    width: width - SPACING['2xl'] * 2,
+  },
+  googleButtonDesktop: {
+    width: '100%' as unknown as number,
   },
   googleIcon: {
     fontSize: TYPOGRAPHY.fontSize.lg,
@@ -410,5 +521,83 @@ const styles = StyleSheet.create({
     fontSize: TYPOGRAPHY.fontSize.sm,
     color: COLORS.primary,
     fontWeight: '700',
+  },
+});
+
+// -----------------------------------------------------------------------
+// Desktop-only styles
+// -----------------------------------------------------------------------
+const desktopStyles = StyleSheet.create({
+  root: {
+    flex: 1,
+    flexDirection: 'row',
+    backgroundColor: COLORS.primary,
+  },
+  leftPanel: {
+    flex: 1,
+    maxWidth: 480,
+    backgroundColor: COLORS.white,
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  leftContent: {
+    paddingHorizontal: SPACING['3xl'],
+    paddingVertical: SPACING['3xl'],
+  },
+  rightPanel: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: SPACING['3xl'],
+  },
+  crossMotif: {
+    fontSize: 64,
+    color: COLORS.accent,
+    marginBottom: SPACING['2xl'],
+  },
+  brandName: {
+    fontSize: TYPOGRAPHY.fontSize['3xl'],
+    fontWeight: '800',
+    color: COLORS.white,
+    letterSpacing: 3,
+    marginBottom: SPACING.sm,
+  },
+  brandTagline: {
+    fontSize: TYPOGRAPHY.fontSize.md,
+    color: COLORS.accentLight,
+    marginBottom: SPACING['4xl'],
+  },
+  verseContainer: {
+    paddingHorizontal: SPACING['2xl'],
+    alignItems: 'center',
+    maxWidth: 420,
+  },
+  verseText: {
+    fontSize: TYPOGRAPHY.fontSize.lg,
+    color: COLORS.white,
+    textAlign: 'center',
+    fontStyle: 'italic',
+    lineHeight: TYPOGRAPHY.fontSize.lg * TYPOGRAPHY.lineHeight.relaxed,
+    marginBottom: SPACING.md,
+  },
+  verseRef: {
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    color: COLORS.accentLight,
+    fontWeight: '600',
+  },
+  dotsRow: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+    marginTop: SPACING['3xl'],
+  },
+  dot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: 'rgba(255,255,255,0.25)',
+  },
+  dotActive: {
+    backgroundColor: COLORS.accent,
+    width: 24,
   },
 });

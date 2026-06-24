@@ -1,9 +1,10 @@
 // =============================================================================
 // TOO HUMBLE - REGISTER SCREEN
 // Strong validation, full_name capture, role default 'client'
+// Split-panel layout on web/desktop (width >= 768); unchanged on mobile/native
 // =============================================================================
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -16,7 +17,8 @@ import {
   ScrollView,
   Alert,
   ActivityIndicator,
-  Dimensions,
+  Animated,
+  useWindowDimensions,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -29,7 +31,19 @@ import {
   SHADOWS,
 } from '../../constants/theme';
 
-const { width } = Dimensions.get('window');
+// -----------------------------------------------------------------------
+// Rotating verse data (desktop right panel only — subset)
+// -----------------------------------------------------------------------
+interface PanelQuote {
+  text: string;
+  reference: string;
+}
+
+const PANEL_QUOTES: PanelQuote[] = [
+  { text: 'Therefore, if anyone is in Christ, the new creation has come: The old has gone, the new is here!', reference: '2 Corinthians 5:17' },
+  { text: 'For we are God\'s handiwork, created in Christ Jesus to do good works.', reference: 'Ephesians 2:10' },
+  { text: 'Start children off on the way they should go, and even when they are old they will not turn from it.', reference: 'Proverbs 22:6' },
+];
 
 // -----------------------------------------------------------------------
 // Validation helpers
@@ -55,7 +69,7 @@ function validatePassword(password: string): string | null {
   if (password.length < 8) return 'Password must be at least 8 characters.';
   if (!/[A-Z]/.test(password)) return 'Password must contain at least one uppercase letter.';
   if (!/[0-9]/.test(password)) return 'Password must contain at least one number.';
-  if (!/[!@#$%^&*()_+\-=[\]{}|;':",.<>?/]/.test(password))
+  if (!/[!@#$%^&*()_+\-=[\]{}|;':",.< >?/]/.test(password))
     return 'Password must contain at least one special character.';
   return null;
 }
@@ -75,7 +89,7 @@ function passwordStrength(password: string): number {
   if (password.length >= 8) score++;
   if (/[A-Z]/.test(password)) score++;
   if (/[0-9]/.test(password)) score++;
-  if (/[!@#$%^&*()_+\-=[\]{}|;':",.<>?/]/.test(password)) score++;
+  if (/[!@#$%^&*()_+\-=[\]{}|;':",.< >?/]/.test(password)) score++;
   if (password.length >= 12) score++;
   return score; // 0-5
 }
@@ -96,6 +110,9 @@ const STRENGTH_COLORS = [
 export default function RegisterScreen(): React.JSX.Element {
   const router = useRouter();
   const { register, loginWithGoogle, isLoading } = useAuth();
+  const { width } = useWindowDimensions();
+
+  const isDesktop: boolean = Platform.OS === 'web' && width >= 768;
 
   const [fullName, setFullName] = useState<string>('');
   const [email, setEmail] = useState<string>('');
@@ -113,6 +130,29 @@ export default function RegisterScreen(): React.JSX.Element {
   }>({ fullName: null, email: null, password: null, confirmPassword: null });
 
   const strength = passwordStrength(password);
+
+  // Rotating verse state (desktop only)
+  const [quoteIndex, setQuoteIndex] = useState<number>(0);
+  const fadeAnim = useRef<Animated.Value>(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    if (!isDesktop) return;
+    const interval = setInterval(() => {
+      Animated.timing(fadeAnim, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: false,
+      }).start(() => {
+        setQuoteIndex((prev) => (prev + 1) % PANEL_QUOTES.length);
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 400,
+          useNativeDriver: false,
+        }).start();
+      });
+    }, 7000);
+    return () => clearInterval(interval);
+  }, [isDesktop, fadeAnim]);
 
   // ----------------------------------------------------------------
   // Submit
@@ -168,7 +208,235 @@ export default function RegisterScreen(): React.JSX.Element {
   const isBusy = isSubmitting || isLoading;
 
   // ----------------------------------------------------------------
-  // Render
+  // Form content (shared between mobile and desktop)
+  // ----------------------------------------------------------------
+  const formContent = (
+    <>
+      <Text style={styles.heading}>Create Account</Text>
+      <Text style={styles.subheading}>Join Too Humble Community</Text>
+
+      {/* Full Name */}
+      <View style={styles.fieldGroup}>
+        <Text style={styles.label}>Full Name</Text>
+        <View style={[styles.inputWrapper, errors.fullName ? styles.inputError : null]}>
+          <TextInput
+            style={styles.input}
+            value={fullName}
+            onChangeText={(t) => { setFullName(t); clearError('fullName'); }}
+            placeholder="Your full name"
+            placeholderTextColor={COLORS.midGray}
+            autoCapitalize="words"
+            autoComplete="name"
+            textContentType="name"
+            returnKeyType="next"
+            editable={!isBusy}
+          />
+        </View>
+        {errors.fullName && <Text style={styles.errorText}>{errors.fullName}</Text>}
+      </View>
+
+      {/* Email */}
+      <View style={styles.fieldGroup}>
+        <Text style={styles.label}>Email</Text>
+        <View style={[styles.inputWrapper, errors.email ? styles.inputError : null]}>
+          <TextInput
+            style={styles.input}
+            value={email}
+            onChangeText={(t) => { setEmail(t); clearError('email'); }}
+            placeholder="yourname@email.com"
+            placeholderTextColor={COLORS.midGray}
+            autoCapitalize="none"
+            keyboardType="email-address"
+            autoComplete="email"
+            textContentType="emailAddress"
+            returnKeyType="next"
+            editable={!isBusy}
+          />
+        </View>
+        {errors.email && <Text style={styles.errorText}>{errors.email}</Text>}
+      </View>
+
+      {/* Password */}
+      <View style={styles.fieldGroup}>
+        <Text style={styles.label}>Password</Text>
+        <View style={[styles.inputWrapper, errors.password ? styles.inputError : null]}>
+          <TextInput
+            style={styles.input}
+            value={password}
+            onChangeText={(t) => { setPassword(t); clearError('password'); }}
+            placeholder="Min 8 chars, 1 uppercase, 1 number"
+            placeholderTextColor={COLORS.midGray}
+            secureTextEntry={!showPassword}
+            textContentType="newPassword"
+            returnKeyType="next"
+            editable={!isBusy}
+          />
+          <TouchableOpacity
+            onPress={() => setShowPassword((v) => !v)}
+            style={styles.eyeButton}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Text style={styles.eyeIcon}>{showPassword ? '🙈' : '👁️'}</Text>
+          </TouchableOpacity>
+        </View>
+        {password.length > 0 && (
+          <View style={styles.strengthContainer}>
+            <View style={styles.strengthBars}>
+              {[1, 2, 3, 4, 5].map((level) => (
+                <View
+                  key={level}
+                  style={[
+                    styles.strengthBar,
+                    {
+                      backgroundColor:
+                        strength >= level
+                          ? STRENGTH_COLORS[strength]
+                          : COLORS.lightGray,
+                    },
+                  ]}
+                />
+              ))}
+            </View>
+            <Text
+              style={[styles.strengthLabel, { color: STRENGTH_COLORS[strength] }]}
+            >
+              {STRENGTH_LABELS[strength]}
+            </Text>
+          </View>
+        )}
+        {errors.password && <Text style={styles.errorText}>{errors.password}</Text>}
+      </View>
+
+      {/* Confirm Password */}
+      <View style={styles.fieldGroup}>
+        <Text style={styles.label}>Confirm Password</Text>
+        <View
+          style={[
+            styles.inputWrapper,
+            errors.confirmPassword ? styles.inputError : null,
+          ]}
+        >
+          <TextInput
+            style={styles.input}
+            value={confirmPassword}
+            onChangeText={(t) => { setConfirmPassword(t); clearError('confirmPassword'); }}
+            placeholder="Re-enter your password"
+            placeholderTextColor={COLORS.midGray}
+            secureTextEntry={!showConfirm}
+            textContentType="newPassword"
+            returnKeyType="done"
+            onSubmitEditing={handleRegister}
+            editable={!isBusy}
+          />
+          <TouchableOpacity
+            onPress={() => setShowConfirm((v) => !v)}
+            style={styles.eyeButton}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Text style={styles.eyeIcon}>{showConfirm ? '🙈' : '👁️'}</Text>
+          </TouchableOpacity>
+        </View>
+        {errors.confirmPassword && (
+          <Text style={styles.errorText}>{errors.confirmPassword}</Text>
+        )}
+      </View>
+
+      {/* Sign Up Button */}
+      <TouchableOpacity
+        style={[styles.signupButton, isBusy ? styles.buttonDisabled : null]}
+        onPress={handleRegister}
+        disabled={isBusy}
+        activeOpacity={0.85}
+      >
+        {isBusy ? (
+          <ActivityIndicator color={COLORS.white} />
+        ) : (
+          <Text style={styles.signupButtonText}>Sign Up</Text>
+        )}
+      </TouchableOpacity>
+
+      {/* Divider */}
+      <View style={styles.dividerRow}>
+        <View style={styles.dividerLine} />
+        <Text style={styles.dividerText}>or</Text>
+        <View style={styles.dividerLine} />
+      </View>
+
+      {/* Google */}
+      <TouchableOpacity
+        style={[styles.googleButton, isDesktop ? styles.googleButtonDesktop : null]}
+        onPress={handleGoogleSignUp}
+        disabled={isBusy}
+        activeOpacity={0.85}
+      >
+        <Text style={styles.googleIcon}>G</Text>
+        <Text style={styles.googleButtonText}>Continue with Google</Text>
+      </TouchableOpacity>
+
+      {/* Login link */}
+      <View style={styles.loginRow}>
+        <Text style={styles.loginText}>Already have an account? </Text>
+        <TouchableOpacity onPress={() => router.push('/auth/login')}>
+          <Text style={styles.loginLink}>Login</Text>
+        </TouchableOpacity>
+      </View>
+    </>
+  );
+
+  // ----------------------------------------------------------------
+  // Desktop split-panel layout
+  // ----------------------------------------------------------------
+  if (isDesktop) {
+    const currentQuote: PanelQuote = PANEL_QUOTES[quoteIndex];
+    return (
+      <View style={regDesktopStyles.root}>
+        <StatusBar barStyle="light-content" backgroundColor={COLORS.primary} />
+
+        {/* Left panel — form */}
+        <View style={regDesktopStyles.leftPanel}>
+          <ScrollView
+            contentContainerStyle={regDesktopStyles.leftContent}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            {formContent}
+          </ScrollView>
+        </View>
+
+        {/* Right panel — brand + rotating verse */}
+        <LinearGradient
+          colors={[COLORS.primary, COLORS.primaryDark]}
+          style={regDesktopStyles.rightPanel}
+        >
+          <Text style={regDesktopStyles.crossMotif}>✝</Text>
+
+          <Text style={regDesktopStyles.brandName}>TOO HUMBLE</Text>
+          <Text style={regDesktopStyles.brandTagline}>Join Too Humble Community</Text>
+
+          <Animated.View style={[regDesktopStyles.verseContainer, { opacity: fadeAnim }]}>
+            <Text style={regDesktopStyles.verseText}>"{currentQuote.text}"</Text>
+            <Text style={regDesktopStyles.verseRef}>— {currentQuote.reference}</Text>
+          </Animated.View>
+
+          {/* Dot indicators */}
+          <View style={regDesktopStyles.dotsRow}>
+            {PANEL_QUOTES.map((_q, i) => (
+              <View
+                key={i}
+                style={[
+                  regDesktopStyles.dot,
+                  i === quoteIndex ? regDesktopStyles.dotActive : null,
+                ]}
+              />
+            ))}
+          </View>
+        </LinearGradient>
+      </View>
+    );
+  }
+
+  // ----------------------------------------------------------------
+  // Mobile / native layout (unchanged)
   // ----------------------------------------------------------------
   return (
     <KeyboardAvoidingView
@@ -195,181 +463,14 @@ export default function RegisterScreen(): React.JSX.Element {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.heading}>Create Account</Text>
-        <Text style={styles.subheading}>Join Too Humble Community</Text>
-
-        {/* Full Name */}
-        <View style={styles.fieldGroup}>
-          <Text style={styles.label}>Full Name</Text>
-          <View style={[styles.inputWrapper, errors.fullName ? styles.inputError : null]}>
-            <TextInput
-              style={styles.input}
-              value={fullName}
-              onChangeText={(t) => { setFullName(t); clearError('fullName'); }}
-              placeholder="Your full name"
-              placeholderTextColor={COLORS.midGray}
-              autoCapitalize="words"
-              autoComplete="name"
-              textContentType="name"
-              returnKeyType="next"
-              editable={!isBusy}
-            />
-          </View>
-          {errors.fullName && <Text style={styles.errorText}>{errors.fullName}</Text>}
-        </View>
-
-        {/* Email */}
-        <View style={styles.fieldGroup}>
-          <Text style={styles.label}>Email</Text>
-          <View style={[styles.inputWrapper, errors.email ? styles.inputError : null]}>
-            <TextInput
-              style={styles.input}
-              value={email}
-              onChangeText={(t) => { setEmail(t); clearError('email'); }}
-              placeholder="yourname@email.com"
-              placeholderTextColor={COLORS.midGray}
-              autoCapitalize="none"
-              keyboardType="email-address"
-              autoComplete="email"
-              textContentType="emailAddress"
-              returnKeyType="next"
-              editable={!isBusy}
-            />
-          </View>
-          {errors.email && <Text style={styles.errorText}>{errors.email}</Text>}
-        </View>
-
-        {/* Password */}
-        <View style={styles.fieldGroup}>
-          <Text style={styles.label}>Password</Text>
-          <View style={[styles.inputWrapper, errors.password ? styles.inputError : null]}>
-            <TextInput
-              style={styles.input}
-              value={password}
-              onChangeText={(t) => { setPassword(t); clearError('password'); }}
-              placeholder="Min 8 chars, 1 uppercase, 1 number"
-              placeholderTextColor={COLORS.midGray}
-              secureTextEntry={!showPassword}
-              textContentType="newPassword"
-              returnKeyType="next"
-              editable={!isBusy}
-            />
-            <TouchableOpacity
-              onPress={() => setShowPassword((v) => !v)}
-              style={styles.eyeButton}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <Text style={styles.eyeIcon}>{showPassword ? '🙈' : '👁️'}</Text>
-            </TouchableOpacity>
-          </View>
-          {password.length > 0 && (
-            <View style={styles.strengthContainer}>
-              <View style={styles.strengthBars}>
-                {[1, 2, 3, 4, 5].map((level) => (
-                  <View
-                    key={level}
-                    style={[
-                      styles.strengthBar,
-                      {
-                        backgroundColor:
-                          strength >= level
-                            ? STRENGTH_COLORS[strength]
-                            : COLORS.lightGray,
-                      },
-                    ]}
-                  />
-                ))}
-              </View>
-              <Text
-                style={[styles.strengthLabel, { color: STRENGTH_COLORS[strength] }]}
-              >
-                {STRENGTH_LABELS[strength]}
-              </Text>
-            </View>
-          )}
-          {errors.password && <Text style={styles.errorText}>{errors.password}</Text>}
-        </View>
-
-        {/* Confirm Password */}
-        <View style={styles.fieldGroup}>
-          <Text style={styles.label}>Confirm Password</Text>
-          <View
-            style={[
-              styles.inputWrapper,
-              errors.confirmPassword ? styles.inputError : null,
-            ]}
-          >
-            <TextInput
-              style={styles.input}
-              value={confirmPassword}
-              onChangeText={(t) => { setConfirmPassword(t); clearError('confirmPassword'); }}
-              placeholder="Re-enter your password"
-              placeholderTextColor={COLORS.midGray}
-              secureTextEntry={!showConfirm}
-              textContentType="newPassword"
-              returnKeyType="done"
-              onSubmitEditing={handleRegister}
-              editable={!isBusy}
-            />
-            <TouchableOpacity
-              onPress={() => setShowConfirm((v) => !v)}
-              style={styles.eyeButton}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <Text style={styles.eyeIcon}>{showConfirm ? '🙈' : '👁️'}</Text>
-            </TouchableOpacity>
-          </View>
-          {errors.confirmPassword && (
-            <Text style={styles.errorText}>{errors.confirmPassword}</Text>
-          )}
-        </View>
-
-        {/* Sign Up Button */}
-        <TouchableOpacity
-          style={[styles.signupButton, isBusy ? styles.buttonDisabled : null]}
-          onPress={handleRegister}
-          disabled={isBusy}
-          activeOpacity={0.85}
-        >
-          {isBusy ? (
-            <ActivityIndicator color={COLORS.white} />
-          ) : (
-            <Text style={styles.signupButtonText}>Sign Up</Text>
-          )}
-        </TouchableOpacity>
-
-        {/* Divider */}
-        <View style={styles.dividerRow}>
-          <View style={styles.dividerLine} />
-          <Text style={styles.dividerText}>or</Text>
-          <View style={styles.dividerLine} />
-        </View>
-
-        {/* Google */}
-        <TouchableOpacity
-          style={styles.googleButton}
-          onPress={handleGoogleSignUp}
-          disabled={isBusy}
-          activeOpacity={0.85}
-        >
-          <Text style={styles.googleIcon}>G</Text>
-          <Text style={styles.googleButtonText}>Continue with Google</Text>
-        </TouchableOpacity>
-
-        {/* Login link */}
-        <View style={styles.loginRow}>
-          <Text style={styles.loginText}>Already have an account? </Text>
-          <TouchableOpacity onPress={() => router.push('/auth/login')}>
-            <Text style={styles.loginLink}>Login</Text>
-          </TouchableOpacity>
-        </View>
+        {formContent}
       </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
 // -----------------------------------------------------------------------
-// Styles
+// Mobile / shared styles
 // -----------------------------------------------------------------------
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: COLORS.white },
@@ -509,7 +610,9 @@ const styles = StyleSheet.create({
     height: 54,
     backgroundColor: COLORS.white,
     ...SHADOWS.sm,
-    width: width - SPACING['2xl'] * 2,
+  },
+  googleButtonDesktop: {
+    width: '100%' as unknown as number,
   },
   googleIcon: {
     fontSize: TYPOGRAPHY.fontSize.lg,
@@ -531,5 +634,83 @@ const styles = StyleSheet.create({
     fontSize: TYPOGRAPHY.fontSize.sm,
     color: COLORS.primary,
     fontWeight: '700',
+  },
+});
+
+// -----------------------------------------------------------------------
+// Desktop-only styles
+// -----------------------------------------------------------------------
+const regDesktopStyles = StyleSheet.create({
+  root: {
+    flex: 1,
+    flexDirection: 'row',
+    backgroundColor: COLORS.primary,
+  },
+  leftPanel: {
+    flex: 1,
+    maxWidth: 480,
+    backgroundColor: COLORS.white,
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  leftContent: {
+    paddingHorizontal: SPACING['3xl'],
+    paddingVertical: SPACING['2xl'],
+  },
+  rightPanel: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: SPACING['3xl'],
+  },
+  crossMotif: {
+    fontSize: 64,
+    color: COLORS.accent,
+    marginBottom: SPACING['2xl'],
+  },
+  brandName: {
+    fontSize: TYPOGRAPHY.fontSize['3xl'],
+    fontWeight: '800',
+    color: COLORS.white,
+    letterSpacing: 3,
+    marginBottom: SPACING.sm,
+  },
+  brandTagline: {
+    fontSize: TYPOGRAPHY.fontSize.md,
+    color: COLORS.accentLight,
+    marginBottom: SPACING['4xl'],
+  },
+  verseContainer: {
+    paddingHorizontal: SPACING['2xl'],
+    alignItems: 'center',
+    maxWidth: 420,
+  },
+  verseText: {
+    fontSize: TYPOGRAPHY.fontSize.lg,
+    color: COLORS.white,
+    textAlign: 'center',
+    fontStyle: 'italic',
+    lineHeight: TYPOGRAPHY.fontSize.lg * TYPOGRAPHY.lineHeight.relaxed,
+    marginBottom: SPACING.md,
+  },
+  verseRef: {
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    color: COLORS.accentLight,
+    fontWeight: '600',
+  },
+  dotsRow: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+    marginTop: SPACING['3xl'],
+  },
+  dot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: 'rgba(255,255,255,0.25)',
+  },
+  dotActive: {
+    backgroundColor: COLORS.accent,
+    width: 24,
   },
 });

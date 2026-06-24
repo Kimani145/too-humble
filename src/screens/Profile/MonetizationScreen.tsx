@@ -1,6 +1,6 @@
 // =============================================================================
 // TOO HUMBLE - MONETIZATION SCREEN
-// PayPal WebView + M-Pesa STK Push + transaction history
+// PayPal WebView checkout + transaction history
 // =============================================================================
 
 import React, { useState, useCallback, useEffect } from 'react';
@@ -12,29 +12,24 @@ import { WebView } from 'react-native-webview';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../../context/AuthContext';
 import {
-  initiateMpesaSTKPush, getPayPalCheckoutUrl,
+  getPayPalCheckoutUrl,
   persistPayPalSuccess, getUserLedger,
 } from '../../services/paymentService';
 import { MonetizationLedger } from '../../types/database.types';
 import { COLORS, TYPOGRAPHY, SPACING, BORDER_RADIUS, SHADOWS } from '../../constants/theme';
 
-type Gateway = 'mpesa' | 'paypal';
-
-const PRESET_AMOUNTS = [100, 250, 500, 1000, 2500];
+const PRESET_AMOUNTS: number[] = [5, 10, 25, 50, 100];
 const PAYPAL_RETURN_URL = 'toohumble://payment/paypal/success';
 const PAYPAL_CANCEL_URL = 'toohumble://payment/paypal/cancel';
 
 export default function MonetizationScreen(): React.JSX.Element {
   const { user } = useAuth();
-  const [selectedGateway, setSelectedGateway] = useState<Gateway>('mpesa');
   const [amount, setAmount] = useState<string>('');
-  const [phone, setPhone] = useState<string>('');
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [showPayPalWebView, setShowPayPalWebView] = useState(false);
-  const [paypalUrl, setPaypalUrl] = useState('');
+  const [isProcessing, setIsProcessing] = useState<boolean>(false);
+  const [showPayPalWebView, setShowPayPalWebView] = useState<boolean>(false);
+  const [paypalUrl, setPaypalUrl] = useState<string>('');
   const [ledger, setLedger] = useState<MonetizationLedger[]>([]);
-  const [isLoadingLedger, setIsLoadingLedger] = useState(false);
-  const [stkMessage, setStkMessage] = useState<string | null>(null);
+  const [isLoadingLedger, setIsLoadingLedger] = useState<boolean>(false);
 
   const fetchLedger = useCallback(async (): Promise<void> => {
     if (!user) return;
@@ -52,34 +47,12 @@ export default function MonetizationScreen(): React.JSX.Element {
   useEffect(() => { fetchLedger(); }, [fetchLedger]);
 
   // ----------------------------------------------------------------
-  // M-Pesa
-  // ----------------------------------------------------------------
-  const handleMpesaPay = useCallback(async (): Promise<void> => {
-    if (!user) return;
-    const parsedAmount = parseFloat(amount);
-    if (!parsedAmount || parsedAmount < 1) { Alert.alert('Invalid Amount', 'Enter a valid amount.'); return; }
-    if (!/^254\d{9}$/.test(phone)) { Alert.alert('Invalid Phone', 'Use format 254XXXXXXXXX (e.g. 254700000000).'); return; }
-
-    setIsProcessing(true);
-    setStkMessage(null);
-    const result = await initiateMpesaSTKPush({ userId: user.id, phoneNumber: phone, amount: parsedAmount });
-    setIsProcessing(false);
-
-    if (result.success) {
-      setStkMessage('✅ STK Push sent! Check your phone to complete payment.');
-      setAmount('');
-      setTimeout(fetchLedger, 5000); // Refresh ledger after callback
-    } else {
-      Alert.alert('Payment Failed', result.errorMessage ?? 'Try again.');
-    }
-  }, [user, amount, phone, fetchLedger]);
-
-  // ----------------------------------------------------------------
   // PayPal
   // ----------------------------------------------------------------
   const handlePayPalPay = useCallback((): void => {
     const parsedAmount = parseFloat(amount);
-    if (!parsedAmount || parsedAmount < 1) { Alert.alert('Invalid Amount', 'Enter a valid amount.'); return; }
+    if (!parsedAmount || parsedAmount < 1) { Alert.alert('Invalid Amount', 'Enter a valid amount (minimum $1).'); return; }
+    setIsProcessing(true);
     const url = getPayPalCheckoutUrl({
       amount: parsedAmount, currency: 'USD',
       description: 'Too Humble Donation',
@@ -87,6 +60,7 @@ export default function MonetizationScreen(): React.JSX.Element {
     });
     setPaypalUrl(url);
     setShowPayPalWebView(true);
+    setIsProcessing(false);
   }, [amount]);
 
   const handleWebViewNav = useCallback((url: string): void => {
@@ -120,27 +94,12 @@ export default function MonetizationScreen(): React.JSX.Element {
       <StatusBar barStyle="light-content" backgroundColor={COLORS.primary} />
       <LinearGradient colors={[COLORS.primary, COLORS.primaryDark]} style={styles.header}>
         <Text style={styles.headerTitle}>Support Too Humble</Text>
-        <Text style={styles.headerSub}>Your giving helps grow the community 🙏</Text>
+        <Text style={styles.headerSub}>Support with PayPal — secure global giving 🌐 🙏</Text>
       </LinearGradient>
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Gateway toggle */}
-        <View style={styles.gatewayRow}>
-          {(['mpesa', 'paypal'] as Gateway[]).map((g) => (
-            <TouchableOpacity
-              key={g} style={[styles.gatewayBtn, selectedGateway === g ? styles.gatewayBtnActive : null]}
-              onPress={() => setSelectedGateway(g)}
-            >
-              <Text style={styles.gatewayIcon}>{g === 'mpesa' ? '📱' : '🌐'}</Text>
-              <Text style={[styles.gatewayLabel, selectedGateway === g ? styles.gatewayLabelActive : null]}>
-                {g === 'mpesa' ? 'M-Pesa' : 'PayPal'}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-
         {/* Amount presets */}
-        <Text style={styles.label}>Select or enter amount ({selectedGateway === 'mpesa' ? 'KES' : 'USD'})</Text>
+        <Text style={styles.label}>Select or enter amount (USD)</Text>
         <View style={styles.presetsRow}>
           {PRESET_AMOUNTS.map((preset) => (
             <TouchableOpacity
@@ -148,7 +107,7 @@ export default function MonetizationScreen(): React.JSX.Element {
               onPress={() => setAmount(String(preset))}
             >
               <Text style={[styles.presetText, amount === String(preset) ? styles.presetTextActive : null]}>
-                {preset}
+                ${preset}
               </Text>
             </TouchableOpacity>
           ))}
@@ -158,32 +117,17 @@ export default function MonetizationScreen(): React.JSX.Element {
           placeholder="Or type custom amount" placeholderTextColor={COLORS.midGray}
           keyboardType="numeric"
         />
-
-        {/* M-Pesa phone */}
-        {selectedGateway === 'mpesa' && (
-          <>
-            <Text style={styles.label}>M-Pesa Phone Number</Text>
-            <TextInput
-              style={styles.amountInput} value={phone} onChangeText={setPhone}
-              placeholder="254700000000" placeholderTextColor={COLORS.midGray}
-              keyboardType="phone-pad"
-            />
-          </>
-        )}
-
-        {stkMessage && <Text style={styles.stkMsg}>{stkMessage}</Text>}
+        <Text style={styles.helperText}>Amounts in USD. Minimum $1.</Text>
 
         {/* CTA */}
         <TouchableOpacity
           style={[styles.payBtn, isProcessing ? styles.payBtnDisabled : null]}
-          onPress={selectedGateway === 'mpesa' ? handleMpesaPay : handlePayPalPay}
+          onPress={handlePayPalPay}
           disabled={isProcessing}
         >
           {isProcessing
             ? <ActivityIndicator color={COLORS.white} />
-            : <Text style={styles.payBtnText}>
-                {selectedGateway === 'mpesa' ? '📱 Pay with M-Pesa' : '🌐 Pay with PayPal'}
-              </Text>
+            : <Text style={styles.payBtnText}>🌐 Pay with PayPal</Text>
           }
         </TouchableOpacity>
 
@@ -197,8 +141,8 @@ export default function MonetizationScreen(): React.JSX.Element {
           ledger.map((tx) => (
             <View key={tx.id} style={styles.txRow}>
               <View style={styles.txLeft}>
-                <Text style={styles.txGateway}>
-                  {tx.payment_gateway === 'daraja' ? '📱 M-Pesa' : '🌐 PayPal'}
+                <Text style={styles.txLabel}>
+                  {tx.payment_gateway === 'paypal' ? '🌐 PayPal' : '📱 Mobile'}
                 </Text>
                 <Text style={styles.txRef} numberOfLines={1}>{tx.reference_id}</Text>
                 <Text style={styles.txDate}>{new Date(tx.created_at).toLocaleDateString()}</Text>
@@ -241,16 +185,6 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: TYPOGRAPHY.fontSize['2xl'], fontWeight: '800', color: COLORS.white },
   headerSub: { fontSize: TYPOGRAPHY.fontSize.sm, color: COLORS.accentLight, marginTop: 4 },
   content: { padding: SPACING.base, paddingBottom: SPACING['5xl'] },
-  gatewayRow: { flexDirection: 'row', gap: SPACING.md, marginBottom: SPACING.xl },
-  gatewayBtn: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm,
-    borderWidth: 2, borderColor: COLORS.lightGray, borderRadius: BORDER_RADIUS.lg,
-    paddingVertical: SPACING.md, backgroundColor: COLORS.white, ...SHADOWS.sm,
-  },
-  gatewayBtnActive: { borderColor: COLORS.primary, backgroundColor: COLORS.primary },
-  gatewayIcon: { fontSize: 20 },
-  gatewayLabel: { fontSize: TYPOGRAPHY.fontSize.base, fontWeight: '700', color: COLORS.darkGray },
-  gatewayLabelActive: { color: COLORS.white },
   label: { fontSize: TYPOGRAPHY.fontSize.sm, fontWeight: '600', color: COLORS.darkGray, marginBottom: SPACING.sm },
   presetsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm, marginBottom: SPACING.md },
   preset: {
@@ -263,9 +197,9 @@ const styles = StyleSheet.create({
   amountInput: {
     backgroundColor: COLORS.white, borderWidth: 1.5, borderColor: COLORS.lightGray,
     borderRadius: BORDER_RADIUS.md, padding: SPACING.base, fontSize: TYPOGRAPHY.fontSize.base,
-    color: COLORS.charcoal, marginBottom: SPACING.md, ...SHADOWS.sm,
+    color: COLORS.charcoal, ...SHADOWS.sm,
   },
-  stkMsg: { color: COLORS.success, fontSize: TYPOGRAPHY.fontSize.sm, fontWeight: '600', textAlign: 'center', marginBottom: SPACING.md },
+  helperText: { fontSize: TYPOGRAPHY.fontSize.xs, color: COLORS.midGray, marginBottom: SPACING.md, marginTop: SPACING.xs },
   payBtn: {
     backgroundColor: COLORS.primary, borderRadius: BORDER_RADIUS.md, height: 56,
     alignItems: 'center', justifyContent: 'center', marginBottom: SPACING['2xl'], ...SHADOWS.md,
@@ -278,7 +212,7 @@ const styles = StyleSheet.create({
     padding: SPACING.md, marginBottom: SPACING.sm, alignItems: 'center', ...SHADOWS.sm,
   },
   txLeft: { flex: 1 },
-  txGateway: { fontSize: TYPOGRAPHY.fontSize.sm, fontWeight: '700', color: COLORS.charcoal },
+  txLabel: { fontSize: TYPOGRAPHY.fontSize.sm, fontWeight: '700', color: COLORS.charcoal },
   txRef: { fontSize: TYPOGRAPHY.fontSize.xs, color: COLORS.midGray, marginTop: 2 },
   txDate: { fontSize: TYPOGRAPHY.fontSize.xs, color: COLORS.midGray, marginTop: 2 },
   txRight: { alignItems: 'flex-end' },
