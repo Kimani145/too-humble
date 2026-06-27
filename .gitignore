@@ -43,8 +43,11 @@ expo-env.d.ts
 # @end expo-cli
 
 *BRIEF*.md
-*.jpg
-*.png
+
+# Wireframe images (root-level only)
+/IMG-*.jpg
 
 *.pdf
-*.svg
+
+# Supabase CLI binary (if downloaded locally)
+/supabase
