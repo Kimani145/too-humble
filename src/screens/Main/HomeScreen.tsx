@@ -28,7 +28,7 @@ import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
-import { HomeFeedPost } from '../../types/database.types';
+import { HomeFeedPost, PostReaction, SavedPost } from '../../types/database.types';
 import StickyVerse from '../../components/StickyVerse';
 import {
   COLORS,
@@ -75,10 +75,12 @@ interface FeedCardProps {
   item: HomeFeedPost;
   onReact: (id: string) => void;
   onShare: (item: HomeFeedPost) => void;
+  onSave: (id: string) => void;
   hasReacted: boolean;
+  hasSaved: boolean;
 }
 
-function FeedCard({ item, onReact, onShare, hasReacted }: FeedCardProps): React.JSX.Element {
+function FeedCard({ item, onReact, onShare, onSave, hasReacted, hasSaved }: FeedCardProps): React.JSX.Element {
   const isVideo = item.content_type === 'video';
 
   return (
@@ -155,6 +157,17 @@ function FeedCard({ item, onReact, onShare, hasReacted }: FeedCardProps): React.
           <Text style={styles.actionIcon}>↗</Text>
           <Text style={styles.actionText}>Share</Text>
         </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.actionBtn, hasSaved ? styles.actionBtnSaved : null]}
+          onPress={() => onSave(item.id)}
+          activeOpacity={0.75}
+        >
+          <Text style={styles.actionIcon}>{hasSaved ? '🔖' : '🏷️'}</Text>
+          <Text style={[styles.actionText, hasSaved ? styles.actionTextSaved : null]}>
+            {hasSaved ? 'Saved' : 'Save'}
+          </Text>
+        </TouchableOpacity>
       </View>
     </View>
   );
@@ -179,6 +192,7 @@ export default function HomeScreen(): React.JSX.Element {
   const [page, setPage] = useState<number>(0);
   const [hasMore, setHasMore] = useState<boolean>(true);
   const [reactedPosts, setReactedPosts] = useState<Set<string>>(new Set());
+  const [savedPosts, setSavedPosts] = useState<Set<string>>(new Set());
 
   // ----------------------------------------------------------------
   // Fetch feed
@@ -188,6 +202,15 @@ export default function HomeScreen(): React.JSX.Element {
       const currentPage = reset ? 0 : page;
       if (!reset && !hasMore) return;
 
+      const date = calendarDays[selectedDayIndex]?.date;
+      if (!date) return;
+
+      const year = date.getFullYear();
+      const month = date.getMonth();
+      const day = date.getDate();
+      const startOfDay = new Date(Date.UTC(year, month, day, 0, 0, 0, 0)).toISOString();
+      const endOfDay = new Date(Date.UTC(year, month, day, 23, 59, 59, 999)).toISOString();
+
       try {
         const from = currentPage * PAGE_SIZE;
         const to = from + PAGE_SIZE - 1;
@@ -195,6 +218,8 @@ export default function HomeScreen(): React.JSX.Element {
         const { data, error } = await supabase
           .from('home_feed')
           .select('*')
+          .gte('created_at', startOfDay)
+          .lte('created_at', endOfDay)
           .order('reaction_count', { ascending: false })
           .order('created_at', { ascending: false })
           .range(from, to);
@@ -212,7 +237,7 @@ export default function HomeScreen(): React.JSX.Element {
         console.error('[HomeScreen] fetchPosts error:', err);
       }
     },
-    [page, hasMore]
+    [page, hasMore, selectedDayIndex, calendarDays]
   );
 
   // ----------------------------------------------------------------
@@ -230,14 +255,72 @@ export default function HomeScreen(): React.JSX.Element {
     }
   }, [user]);
 
+  // ----------------------------------------------------------------
+  // Fetch user saves
+  // ----------------------------------------------------------------
+  const fetchUserSaves = useCallback(async (): Promise<void> => {
+    if (!user) return;
+    const { data } = await supabase
+      .from('saved_posts')
+      .select('post_id')
+      .eq('user_id', user.id);
+
+    if (data) {
+      setSavedPosts(new Set((data as Array<{ post_id: string }>).map((r) => r.post_id)));
+    }
+  }, [user]);
+
   useEffect(() => {
-    const init = async (): Promise<void> => {
+    let active = true;
+    const loadSelectedDay = async () => {
       setIsLoading(true);
-      await Promise.all([fetchPosts(true), fetchUserReactions()]);
-      setIsLoading(false);
+      setPage(0);
+      setHasMore(true);
+      try {
+        const date = calendarDays[selectedDayIndex]?.date;
+        if (!date) return;
+
+        const year = date.getFullYear();
+        const month = date.getMonth();
+        const day = date.getDate();
+        const startOfDay = new Date(Date.UTC(year, month, day, 0, 0, 0, 0)).toISOString();
+        const endOfDay = new Date(Date.UTC(year, month, day, 23, 59, 59, 999)).toISOString();
+
+        const { data, error } = await supabase
+          .from('home_feed')
+          .select('*')
+          .gte('created_at', startOfDay)
+          .lte('created_at', endOfDay)
+          .order('reaction_count', { ascending: false })
+          .order('created_at', { ascending: false })
+          .range(0, PAGE_SIZE - 1);
+
+        if (error) throw error;
+
+        if (active) {
+          const newPosts = (data ?? []) as HomeFeedPost[];
+          setPosts(newPosts);
+          setHasMore(newPosts.length === PAGE_SIZE);
+          setPage(1);
+          setHasError(false);
+        }
+      } catch (err) {
+        if (active) {
+          setHasError(true);
+        }
+        console.error('[HomeScreen] loadSelectedDay error:', err);
+      } finally {
+        if (active) {
+          setIsLoading(false);
+        }
+      }
     };
-    init();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+    Promise.all([loadSelectedDay(), fetchUserReactions(), fetchUserSaves()]);
+    return () => {
+      active = false;
+    };
+  }, [selectedDayIndex]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-scroll calendar to today
   useEffect(() => {
@@ -253,9 +336,9 @@ export default function HomeScreen(): React.JSX.Element {
     setIsRefreshing(true);
     setPage(0);
     setHasMore(true);
-    await Promise.all([fetchPosts(true), fetchUserReactions()]);
+    await Promise.all([fetchPosts(true), fetchUserReactions(), fetchUserSaves()]);
     setIsRefreshing(false);
-  }, [fetchPosts, fetchUserReactions]);
+  }, [fetchPosts, fetchUserReactions, fetchUserSaves]);
 
   const handleLoadMore = useCallback((): void => {
     if (!isLoading && hasMore) {
@@ -291,10 +374,9 @@ export default function HomeScreen(): React.JSX.Element {
           .eq('post_id', postId)
           .eq('user_id', user.id);
       } else {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          await (supabase as any)
+        await supabase
           .from('post_reactions')
-          .insert({ post_id: postId, user_id: user.id });
+          .insert({ post_id: postId, user_id: user.id } as Pick<PostReaction, 'post_id' | 'user_id'>);
       }
     },
     [user, reactedPosts]
@@ -311,6 +393,34 @@ export default function HomeScreen(): React.JSX.Element {
     }
   }, []);
 
+  const handleSave = useCallback(
+    async (postId: string): Promise<void> => {
+      if (!user) return;
+      const alreadySaved = savedPosts.has(postId);
+
+      // Optimistic update
+      setSavedPosts((prev) => {
+        const next = new Set(prev);
+        if (alreadySaved) next.delete(postId);
+        else next.add(postId);
+        return next;
+      });
+
+      if (alreadySaved) {
+        await supabase
+          .from('saved_posts')
+          .delete()
+          .eq('post_id', postId)
+          .eq('user_id', user.id);
+      } else {
+        await supabase
+          .from('saved_posts')
+          .insert({ post_id: postId, user_id: user.id } as Pick<SavedPost, 'post_id' | 'user_id'>);
+      }
+    },
+    [user, savedPosts]
+  );
+
   // ----------------------------------------------------------------
   // Render helpers
   // ----------------------------------------------------------------
@@ -320,10 +430,12 @@ export default function HomeScreen(): React.JSX.Element {
         item={item}
         onReact={handleReact}
         onShare={handleShare}
+        onSave={handleSave}
         hasReacted={reactedPosts.has(item.id)}
+        hasSaved={savedPosts.has(item.id)}
       />
     ),
-    [handleReact, handleShare, reactedPosts]
+    [handleReact, handleShare, handleSave, reactedPosts, savedPosts]
   );
 
   const keyExtractor = useCallback(
@@ -643,6 +755,10 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   actionTextActive: { color: COLORS.error },
+  actionBtnSaved: {
+    backgroundColor: '#FFF8E1',
+  },
+  actionTextSaved: { color: COLORS.accent },
   centered: {
     flex: 1,
     alignItems: 'center',

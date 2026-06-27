@@ -1,5 +1,5 @@
-// app/(tabs)/_layout.tsx — Bottom tab navigator for client users
 import React from 'react';
+import { Text } from 'react-native';
 import { Tabs } from 'expo-router';
 import { COLORS, TYPOGRAPHY } from '../../src/constants/theme';
 
@@ -49,6 +49,5 @@ export default function TabsLayout(): React.JSX.Element {
 }
 
 function TabIcon({ emoji, color }: { emoji: string; color: string }): React.JSX.Element {
-  const { Text } = require('react-native');
   return <Text style={{ fontSize: 22, opacity: color === COLORS.primary ? 1 : 0.5 }}>{emoji}</Text>;
 }

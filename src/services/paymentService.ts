@@ -1,112 +1,39 @@
 // =============================================================================
 // TOO HUMBLE - PAYMENT SERVICE
-// PayPal WebView + Daraja M-Pesa STK Push + ledger persistence
+// PayPal WebView + Daraja M-Pesa (via Edge Functions) + ledger read
+//
+// SECURITY NOTE:
+// Daraja credentials (consumer key/secret/passkey) MUST NOT be in the client.
+// All M-Pesa STK Push calls go through the supabase/functions/mpesa-initiate
+// Edge Function which holds secrets in env vars server-side.
+//
+// PayPal order creation goes through supabase/functions/paypal-create-order.
+// Only PAYPAL_CLIENT_ID (a public identifier) is acceptable client-side.
 // =============================================================================
 
 import { supabase } from '../lib/supabase';
 import {
-  DarajaSTKPushRequest,
-  DarajaSTKPushResponse,
-  MonetizationLedgerInsert,
+  MonetizationLedger,
   PaymentResult,
 } from '../types/database.types';
 
-// -----------------------------------------------------------------------
-// Daraja constants — values injected from env or secure config
-// -----------------------------------------------------------------------
-const DARAJA_CONSUMER_KEY = process.env.EXPO_PUBLIC_DARAJA_CONSUMER_KEY ?? '';
-const DARAJA_CONSUMER_SECRET = process.env.EXPO_PUBLIC_DARAJA_CONSUMER_SECRET ?? '';
-const DARAJA_SHORTCODE = process.env.EXPO_PUBLIC_DARAJA_SHORTCODE ?? '174379';
-const DARAJA_PASSKEY = process.env.EXPO_PUBLIC_DARAJA_PASSKEY ?? '';
-const DARAJA_CALLBACK_URL = process.env.EXPO_PUBLIC_DARAJA_CALLBACK_URL ?? 'https://yourdomain.com/api/mpesa-callback';
-const DARAJA_BASE = 'https://sandbox.safaricom.co.ke'; // Switch to api.safaricom.co.ke for production
-
-// PayPal
-const PAYPAL_CLIENT_ID = process.env.EXPO_PUBLIC_PAYPAL_CLIENT_ID ?? '';
+// Edge Function base URL — derived from the Supabase project URL
+const EDGE_FUNCTION_BASE = (): string => {
+  const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
+  return supabaseUrl.replace('.supabase.co', '.supabase.co/functions/v1');
+};
 
 // -----------------------------------------------------------------------
-// Helpers
-// -----------------------------------------------------------------------
-
-/** Generate M-Pesa timestamp in YYYYMMDDHHmmss format */
-function getDarajaTimestamp(): string {
-  const now = new Date();
-  const pad = (n: number): string => String(n).padStart(2, '0');
-  return (
-    String(now.getFullYear()) +
-    pad(now.getMonth() + 1) +
-    pad(now.getDate()) +
-    pad(now.getHours()) +
-    pad(now.getMinutes()) +
-    pad(now.getSeconds())
-  );
-}
-
-/** Generate the Daraja password = Base64(Shortcode + Passkey + Timestamp) */
-function getDarajaPassword(timestamp: string): string {
-  const raw = `${DARAJA_SHORTCODE}${DARAJA_PASSKEY}${timestamp}`;
-  return btoa(raw);
-}
-
-/** Fetch Daraja OAuth2 access token */
-async function getDarajaAccessToken(): Promise<string> {
-  const credentials = btoa(`${DARAJA_CONSUMER_KEY}:${DARAJA_CONSUMER_SECRET}`);
-  const res = await fetch(`${DARAJA_BASE}/oauth/v1/generate?grant_type=client_credentials`, {
-    headers: { Authorization: `Basic ${credentials}` },
-  });
-
-  if (!res.ok) {
-    throw new Error(`Daraja auth failed: ${res.status}`);
-  }
-
-  const data = (await res.json()) as { access_token: string };
-  return data.access_token;
-}
-
-// -----------------------------------------------------------------------
-// persistLedgerEntry — write transaction outcome to Supabase
-// -----------------------------------------------------------------------
-export async function persistLedgerEntry(
-  entry: MonetizationLedgerInsert
-): Promise<void> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { error } = await (supabase as any).from('monetization_ledger').insert(entry);
-  if (error) {
-    console.error('[PaymentService] ledger persist error:', error.message);
-    throw error;
-  }
-}
-
-// -----------------------------------------------------------------------
-// updateLedgerStatus — update ledger row after webhook callback
-// -----------------------------------------------------------------------
-export async function updateLedgerStatus(
-  referenceId: string,
-  status: 'success' | 'failed' | 'cancelled',
-  metadata?: Record<string, unknown>
-): Promise<void> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { error } = await (supabase as any)
-    .from('monetization_ledger')
-    .update({ status, metadata: metadata ?? null })
-    .eq('reference_id', referenceId);
-
-  if (error) throw error;
-}
-
-// -----------------------------------------------------------------------
-// initiateMpesaSTKPush — triggers M-Pesa STK push to user's phone
+// initiateMpesaSTKPush — calls the mpesa-initiate Edge Function
+// Credentials are entirely server-side. Client sends only user data.
 // -----------------------------------------------------------------------
 export async function initiateMpesaSTKPush(params: {
   userId: string;
   phoneNumber: string; // Format: 254XXXXXXXXX
   amount: number;
-  accountReference?: string;
-  description?: string;
 }): Promise<PaymentResult> {
-  const { userId, phoneNumber, amount, accountReference = 'TooHumble', description = 'Too Humble Donation' } = params;
+  const { userId, phoneNumber, amount } = params;
 
-  // Validate phone
   if (!/^254\d{9}$/.test(phoneNumber)) {
     return {
       success: false,
@@ -117,66 +44,35 @@ export async function initiateMpesaSTKPush(params: {
     };
   }
 
-  let accessToken: string;
-  try {
-    accessToken = await getDarajaAccessToken();
-  } catch (err: unknown) {
+  if (amount < 1) {
     return {
       success: false,
       referenceId: '',
       amount,
       gateway: 'daraja',
-      errorMessage: err instanceof Error ? err.message : 'Failed to authenticate with Daraja.',
+      errorMessage: 'Minimum donation is KES 1.',
     };
   }
 
-  const timestamp = getDarajaTimestamp();
-  const password = getDarajaPassword(timestamp);
-
-  const requestBody: DarajaSTKPushRequest = {
-    BusinessShortCode: DARAJA_SHORTCODE,
-    Password: password,
-    Timestamp: timestamp,
-    TransactionType: 'CustomerPayBillOnline',
-    Amount: Math.ceil(amount),
-    PartyA: phoneNumber,
-    PartyB: DARAJA_SHORTCODE,
-    PhoneNumber: phoneNumber,
-    CallBackURL: DARAJA_CALLBACK_URL,
-    AccountReference: accountReference,
-    TransactionDesc: description,
-  };
-
   try {
-    const res = await fetch(`${DARAJA_BASE}/mpesa/stkpush/v1/processrequest`, {
+    // Get the current session token to authenticate the Edge Function call
+    const { data: sessionData } = await supabase.auth.getSession();
+    const accessToken = sessionData.session?.access_token;
+
+    const res = await fetch(`${EDGE_FUNCTION_BASE()}/mpesa-initiate`, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${accessToken}`,
         'Content-Type': 'application/json',
+        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
       },
-      body: JSON.stringify(requestBody),
+      body: JSON.stringify({ userId, phone: phoneNumber, amount }),
     });
 
-    const data = (await res.json()) as DarajaSTKPushResponse;
+    const data = await res.json() as { CheckoutRequestID?: string; error?: string };
 
-    if (!res.ok || data.ResponseCode !== '0') {
-      throw new Error(data.ResponseDescription ?? 'STK Push failed.');
+    if (!res.ok || !data.CheckoutRequestID) {
+      throw new Error(data.error ?? 'STK Push failed');
     }
-
-    // Write pending ledger entry
-    await persistLedgerEntry({
-      user_id: userId,
-      payment_gateway: 'daraja',
-      amount,
-      reference_id: data.CheckoutRequestID,
-      phone_number: phoneNumber,
-      currency: 'KES',
-      status: 'pending',
-      metadata: {
-        MerchantRequestID: data.MerchantRequestID,
-        CheckoutRequestID: data.CheckoutRequestID,
-      },
-    });
 
     return {
       success: true,
@@ -196,95 +92,40 @@ export async function initiateMpesaSTKPush(params: {
 }
 
 // -----------------------------------------------------------------------
-// handleMpesaCallback — call this from your webhook handler (edge function)
-// Receives M-Pesa callback body and updates the ledger accordingly
+// createPayPalOrder — calls the paypal-create-order Edge Function
+// Returns the PayPal approval URL for the WebView
 // -----------------------------------------------------------------------
-export async function handleMpesaCallback(callbackBody: {
-  Body: {
-    stkCallback: {
-      MerchantRequestID: string;
-      CheckoutRequestID: string;
-      ResultCode: number;
-      ResultDesc: string;
-      CallbackMetadata?: {
-        Item: Array<{ Name: string; Value: unknown }>;
-      };
-    };
-  };
-}): Promise<void> {
-  const cb = callbackBody.Body.stkCallback;
-  const isSuccess = cb.ResultCode === 0;
+export async function createPayPalOrder(params: {
+  userId: string;
+  amount: number;
+}): Promise<{ approvalUrl: string; orderId: string }> {
+  const { userId, amount } = params;
 
-  const metadata: Record<string, unknown> = {
-    ResultCode: cb.ResultCode,
-    ResultDesc: cb.ResultDesc,
-  };
+  const { data: sessionData } = await supabase.auth.getSession();
+  const accessToken = sessionData.session?.access_token;
 
-  if (isSuccess && cb.CallbackMetadata) {
-    cb.CallbackMetadata.Item.forEach((item) => {
-      metadata[item.Name] = item.Value;
-    });
+  const res = await fetch(`${EDGE_FUNCTION_BASE()}/paypal-create-order`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+    },
+    body: JSON.stringify({ userId, amount }),
+  });
+
+  const data = await res.json() as { approvalUrl?: string; orderId?: string; error?: string };
+
+  if (!res.ok || !data.approvalUrl || !data.orderId) {
+    throw new Error(data.error ?? 'Failed to create PayPal order');
   }
 
-  await updateLedgerStatus(
-    cb.CheckoutRequestID,
-    isSuccess ? 'success' : 'failed',
-    metadata
-  );
+  return { approvalUrl: data.approvalUrl, orderId: data.orderId };
 }
 
 // -----------------------------------------------------------------------
-// getPayPalCheckoutUrl — returns the PayPal approval URL for WebView
+// getUserLedger — fetch all transactions for a user (SELECT-only RLS)
 // -----------------------------------------------------------------------
-export function getPayPalCheckoutUrl(params: {
-  amount: number;
-  currency: string;
-  description: string;
-  returnUrl: string;
-  cancelUrl: string;
-}): string {
-  const { amount, currency, description, returnUrl, cancelUrl } = params;
-  const baseUrl = 'https://www.sandbox.paypal.com/checkoutnow'; // Use paypal.com for production
-
-  const query = new URLSearchParams({
-    token: '', // Will be filled by PayPal Orders API response
-    'client-id': PAYPAL_CLIENT_ID,
-    currency,
-    amount: String(amount),
-    intent: 'capture',
-    'return-url': returnUrl,
-    'cancel-url': cancelUrl,
-  });
-
-  // NOTE: In production, you would first create an order via PayPal Orders API
-  // and use the returned approval_url from the response links[].
-  // This returns a sandbox mock URL for client-side reference.
-  return `${baseUrl}?${query.toString()}`;
-}
-
-// -----------------------------------------------------------------------
-// persistPayPalSuccess — called after WebView detects return URL
-// -----------------------------------------------------------------------
-export async function persistPayPalSuccess(params: {
-  userId: string;
-  orderId: string;
-  amount: number;
-  currency: string;
-}): Promise<void> {
-  await persistLedgerEntry({
-    user_id: params.userId,
-    payment_gateway: 'paypal',
-    amount: params.amount,
-    reference_id: params.orderId,
-    currency: params.currency,
-    status: 'success',
-  });
-}
-
-// -----------------------------------------------------------------------
-// getUserLedger — fetch all transactions for a user
-// -----------------------------------------------------------------------
-export async function getUserLedger(userId: string) {
+export async function getUserLedger(userId: string): Promise<MonetizationLedger[]> {
   const { data, error } = await supabase
     .from('monetization_ledger')
     .select('*')
@@ -292,5 +133,5 @@ export async function getUserLedger(userId: string) {
     .order('created_at', { ascending: false });
 
   if (error) throw error;
-  return data;
+  return (data ?? []) as MonetizationLedger[];
 }

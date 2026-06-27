@@ -3,7 +3,7 @@
 // Anchors across tab views; auto-fetches daily verse, offline fallback
 // =============================================================================
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -25,7 +25,7 @@ export default function StickyVerse({ onPress }: StickyVerseProps): React.JSX.El
   const [verse, setVerse] = useState<DailyVerse | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [hasError, setHasError] = useState<boolean>(false);
-  const fadeAnim = new Animated.Value(0);
+  const fadeAnim = useRef(new Animated.Value(0)).current;
 
   const loadVerse = useCallback(async (): Promise<void> => {
     setIsLoading(true);

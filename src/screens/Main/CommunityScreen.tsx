@@ -14,7 +14,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { supabase, uploadToStorage } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
-import { CommunityPost } from '../../types/database.types';
+import { CommunityPost, CommunityPostInsert, CommunityPostUpdate } from '../../types/database.types';
 import {
   COLORS, TYPOGRAPHY, SPACING, BORDER_RADIUS, SHADOWS,
   MAX_IMAGE_SIZE_BYTES, MAX_CAPTION_LENGTH, STORAGE_BUCKETS, PAGE_SIZE,
@@ -31,6 +31,45 @@ function timeAgo(dateStr: string): string {
   const hrs = Math.floor(mins / 60);
   if (hrs < 24) return `${hrs}h ago`;
   return `${Math.floor(hrs / 24)}d ago`;
+}
+
+function generateUUID(): string {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
+const signedUrlCache: { [path: string]: { url: string; expiresAt: number } } = {};
+
+const getStoragePathFromUrl = (url: string): string | null => {
+  if (!url) return null;
+  const match = url.match(/community\/media\/[^?]+/);
+  return match ? match[0] : null;
+};
+
+async function getCachedSignedUrl(path: string): Promise<string> {
+  const cached = signedUrlCache[path];
+  const buffer = 300 * 1000; // 5 minute buffer
+  if (cached && cached.expiresAt > Date.now() + buffer) {
+    return cached.url;
+  }
+
+  const { data, error } = await supabase.storage
+    .from('community-uploads')
+    .createSignedUrl(path, 3600);
+
+  if (error || !data?.signedUrl) {
+    throw new Error(error?.message ?? 'Failed to generate signed URL');
+  }
+
+  signedUrlCache[path] = {
+    url: data.signedUrl,
+    expiresAt: Date.now() + 3600 * 1000,
+  };
+
+  return data.signedUrl;
 }
 
 // -----------------------------------------------------------------------
@@ -161,19 +200,19 @@ function CreatePostModal({ visible, onClose, onPublished, userId }: CreatePostMo
 
       if (imageUri) {
         const ext = imageUri.split('.').pop() ?? 'jpg';
-        const path = `${userId}/${Date.now()}.${ext}`;
+        const uuid = generateUUID();
+        const path = `community/media/${userId}/${uuid}.${ext}`;
         const response = await fetch(imageUri);
         const blob = await response.blob();
         uploadedUrl = await uploadToStorage(STORAGE_BUCKETS.communityUploads, path, blob, `image/${ext}`);
       }
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { error } = await (supabase as any).from('community_posts').insert({
+      const { error } = await supabase.from('community_posts').insert({
         user_id: userId,
         caption: caption.trim(),
         image_url: uploadedUrl,
-        file_size_kb: imageSizeKb || null,
-      });
+        file_size_kb: imageSizeKb ? Math.round(imageSizeKb) : null,
+      } as CommunityPostInsert);
 
       if (error) throw error;
 
@@ -301,7 +340,25 @@ export default function CommunityScreen(): React.JSX.Element {
 
       if (error) throw error;
       const newPosts = (data ?? []) as CommunityPost[];
-      setPosts((prev) => reset ? newPosts : [...prev, ...newPosts]);
+      
+      const resolvedPosts = await Promise.all(
+        newPosts.map(async (post) => {
+          if (post.image_url) {
+            try {
+              const path = getStoragePathFromUrl(post.image_url);
+              if (path) {
+                const signedUrl = await getCachedSignedUrl(path);
+                return { ...post, image_url: signedUrl };
+              }
+            } catch (err) {
+              console.error('Failed to get signed URL for post:', post.id, err);
+            }
+          }
+          return post;
+        })
+      );
+
+      setPosts((prev) => reset ? resolvedPosts : [...prev, ...resolvedPosts]);
       setHasMore(newPosts.length === PAGE_SIZE);
       setPage(currentPage + 1);
     } catch (err) {
@@ -329,8 +386,7 @@ export default function CommunityScreen(): React.JSX.Element {
   const handleFlag = useCallback(async (postId: string): Promise<void> => {
     const post = posts.find((p) => p.id === postId);
     const newFlag = !(post?.is_flagged ?? false);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (supabase as any).from('community_posts').update({ is_flagged: newFlag }).eq('id', postId);
+    await supabase.from('community_posts').update({ is_flagged: newFlag } as CommunityPostUpdate).eq('id', postId);
     setPosts((prev) => prev.map((p) => p.id === postId ? { ...p, is_flagged: newFlag } : p));
   }, [posts]);
 

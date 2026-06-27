@@ -4,7 +4,7 @@
 // =============================================================================
 
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from 'expo-secure-store';
 import { Database } from '../types/database.types';
 
 // -----------------------------------------------------------------------
@@ -25,26 +25,18 @@ import { Platform } from 'react-native';
 
 const isSSR = Platform.OS === 'web' && typeof window === 'undefined';
 
-const ssrSafeStorage = {
-  getItem: async (key: string): Promise<string | null> => {
+const SecureStoreAdapter = {
+  getItem: (key: string): string | null | Promise<string | null> => {
     if (isSSR) return null;
-    try {
-      return await AsyncStorage.getItem(key);
-    } catch {
-      return null;
-    }
+    return Platform.OS === 'web' ? localStorage.getItem(key) : SecureStore.getItemAsync(key);
   },
-  setItem: async (key: string, value: string): Promise<void> => {
+  setItem: (key: string, value: string): void | Promise<void> => {
     if (isSSR) return;
-    try {
-      await AsyncStorage.setItem(key, value);
-    } catch {}
+    return Platform.OS === 'web' ? localStorage.setItem(key, value) : SecureStore.setItemAsync(key, value);
   },
-  removeItem: async (key: string): Promise<void> => {
+  removeItem: (key: string): void | Promise<void> => {
     if (isSSR) return;
-    try {
-      await AsyncStorage.removeItem(key);
-    } catch {}
+    return Platform.OS === 'web' ? localStorage.removeItem(key) : SecureStore.deleteItemAsync(key);
   },
 };
 
@@ -56,7 +48,7 @@ export const supabase: SupabaseClient<Database> = createClient<Database>(
   SUPABASE_ANON_KEY,
   {
     auth: {
-      storage: ssrSafeStorage,
+      storage: SecureStoreAdapter,
       // Automatically refresh tokens before they expire
       autoRefreshToken: true,
       // Persist session across cold boots

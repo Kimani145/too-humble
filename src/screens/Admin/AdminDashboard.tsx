@@ -13,8 +13,9 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { RealtimePostgresInsertPayload } from '@supabase/supabase-js';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
-import { Profile, CommunityPost } from '../../types/database.types';
+import { Profile, CommunityPost, CommunityPostUpdate } from '../../types/database.types';
 import { COLORS, TYPOGRAPHY, SPACING, BORDER_RADIUS, SHADOWS } from '../../constants/theme';
+
 
 // -----------------------------------------------------------------------
 // Stat card
@@ -119,8 +120,7 @@ export default function AdminDashboard(): React.JSX.Element {
   }, []);
 
   const handleDismissFlag = useCallback(async (postId: string): Promise<void> => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (supabase as any).from('community_posts').update({ is_flagged: false }).eq('id', postId);
+    await supabase.from('community_posts').update({ is_flagged: false } as CommunityPostUpdate).eq('id', postId);
     setFlaggedPosts((prev) => prev.filter((p) => p.id !== postId));
     setStats((s) => ({ ...s, flagged: Math.max(0, s.flagged - 1) }));
   }, []);

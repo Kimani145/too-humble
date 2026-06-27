@@ -12,7 +12,7 @@ export type PaymentStatus = 'pending' | 'success' | 'failed' | 'cancelled';
 // TABLE ROW TYPES
 // -----------------------------------------------------------------------
 
-export interface Profile {
+export type Profile = {
   id: string;
   full_name: string;
   role: UserRole;
@@ -20,9 +20,9 @@ export interface Profile {
   fb_link: string | null;
   created_at: string;
   updated_at: string;
-}
+};
 
-export interface HomeFeedPost {
+export type HomeFeedPost = {
   id: string;
   content_type: ContentType;
   title: string;
@@ -32,9 +32,9 @@ export interface HomeFeedPost {
   reaction_count: number;
   created_at: string;
   updated_at: string;
-}
+};
 
-export interface CommunityPost {
+export type CommunityPost = {
   id: string;
   user_id: string;
   image_url: string | null;
@@ -45,9 +45,9 @@ export interface CommunityPost {
   updated_at: string;
   // Joined fields (from queries that join profiles)
   profiles?: Pick<Profile, 'id' | 'full_name' | 'avatar_url' | 'role'>;
-}
+};
 
-export interface MonetizationLedger {
+export type MonetizationLedger = {
   id: string;
   user_id: string;
   payment_gateway: PaymentGateway;
@@ -59,21 +59,30 @@ export interface MonetizationLedger {
   metadata: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;
-}
+};
 
-export interface PostReaction {
+export type PostReaction = {
   id: string;
   post_id: string;
   user_id: string;
   created_at: string;
-}
+};
 
-export interface CommunityReaction {
+export type CommunityReaction = {
   id: string;
   post_id: string;
   user_id: string;
   created_at: string;
-}
+};
+
+export type SavedPost = {
+  id: string;
+  user_id: string;
+  post_id: string;
+  created_at: string;
+  // Joined fields (queries that join home_feed)
+  home_feed?: HomeFeedPost;
+};
 
 // -----------------------------------------------------------------------
 // INSERT TYPES (omit auto-generated fields)
@@ -120,48 +129,63 @@ export type MonetizationLedgerUpdate = Partial<
 // DATABASE TYPE MAP (Supabase generic type helper)
 // -----------------------------------------------------------------------
 
-export interface Database {
+export type Database = {
   public: {
     Tables: {
       profiles: {
         Row: Profile;
         Insert: ProfileInsert;
         Update: ProfileUpdate;
+        Relationships: [];
       };
       home_feed: {
         Row: HomeFeedPost;
         Insert: HomeFeedInsert;
         Update: HomeFeedUpdate;
+        Relationships: [];
       };
       community_posts: {
         Row: CommunityPost;
         Insert: CommunityPostInsert;
         Update: CommunityPostUpdate;
+        Relationships: [];
       };
       monetization_ledger: {
         Row: MonetizationLedger;
         Insert: MonetizationLedgerInsert;
         Update: MonetizationLedgerUpdate;
+        Relationships: [];
       };
       post_reactions: {
         Row: PostReaction;
         Insert: Pick<PostReaction, 'post_id' | 'user_id'>;
         Update: never;
+        Relationships: [];
       };
       community_reactions: {
         Row: CommunityReaction;
         Insert: Pick<CommunityReaction, 'post_id' | 'user_id'>;
         Update: never;
+        Relationships: [];
+      };
+      saved_posts: {
+        Row: SavedPost;
+        Insert: Pick<SavedPost, 'user_id' | 'post_id'>;
+        Update: never;
+        Relationships: [];
       };
     };
+    Views: Record<never, never>;
+    Functions: Record<never, never>;
     Enums: {
       user_role: UserRole;
       content_type: ContentType;
       payment_gateway: PaymentGateway;
       payment_status: PaymentStatus;
     };
+    CompositeTypes: Record<never, never>;
   };
-}
+};
 
 // -----------------------------------------------------------------------
 // API / SERVICE TYPES

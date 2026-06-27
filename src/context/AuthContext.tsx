@@ -13,7 +13,8 @@ import React, {
 } from 'react';
 import { Session, User, AuthError } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
-import { Profile, UserRole } from '../types/database.types';
+import { Profile, UserRole, ProfileUpdate } from '../types/database.types';
+
 
 // -----------------------------------------------------------------------
 // Context shape
@@ -203,10 +204,9 @@ export function AuthProvider({ children }: AuthProviderProps): React.JSX.Element
     ): Promise<void> => {
       if (!user) throw new Error('Not authenticated');
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data, error } = await (supabase as any)
+      const { data, error } = await supabase
         .from('profiles')
-        .update(updates)
+        .update(updates as ProfileUpdate)
         .eq('id', user.id)
         .select()
         .single();
