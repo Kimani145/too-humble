@@ -1,6 +1,7 @@
 // =============================================================================
 // TOO HUMBLE - HOME SCREEN
 // 30-day calendar strip + home_feed (admin posts, sorted by reaction_count)
+// Supports dynamic theme toggling, translation, and custom branding header.
 // =============================================================================
 
 import React, {
@@ -26,12 +27,15 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
+import { useTheme } from '../../context/ThemeContext';
+import { useTranslation } from '../../context/LanguageContext';
 import { HomeFeedPost, PostReaction, SavedPost } from '../../types/database.types';
 import StickyVerse from '../../components/StickyVerse';
+import BrandText from '../../components/BrandText';
 import {
-  COLORS,
   TYPOGRAPHY,
   SPACING,
   BORDER_RADIUS,
@@ -78,16 +82,19 @@ interface FeedCardProps {
   onSave: (id: string) => void;
   hasReacted: boolean;
   hasSaved: boolean;
+  colors: any;
+  t: (key: string) => string;
 }
 
-function FeedCard({ item, onReact, onShare, onSave, hasReacted, hasSaved }: FeedCardProps): React.JSX.Element {
+function FeedCard({ item, onReact, onShare, onSave, hasReacted, hasSaved, colors, t }: FeedCardProps): React.JSX.Element {
   const isVideo = item.content_type === 'video';
+  const styles = getCardStyles(colors);
 
   return (
     <View style={styles.feedCard}>
       {/* Header */}
       <LinearGradient
-        colors={[COLORS.primary, COLORS.primaryLight]}
+        colors={[colors.primary, colors.primaryLight]}
         style={styles.cardHeader}
       >
         <View style={styles.cardHeaderLeft}>
@@ -112,7 +119,7 @@ function FeedCard({ item, onReact, onShare, onSave, hasReacted, hasSaved }: Feed
                 resizeMode="cover"
               />
               <View style={styles.playOverlay}>
-                <Text style={styles.playIcon}>▶</Text>
+                <Ionicons name="play" size={36} color="#FFFFFF" />
               </View>
             </View>
           ) : (
@@ -129,7 +136,7 @@ function FeedCard({ item, onReact, onShare, onSave, hasReacted, hasSaved }: Feed
       <View style={styles.cardBody}>
         <Text style={styles.cardTitle}>{item.title}</Text>
         {item.body_text ? (
-          <Text style={styles.cardBody_text} numberOfLines={3}>
+          <Text style={styles.cardBodyText} numberOfLines={3}>
             {item.body_text}
           </Text>
         ) : null}
@@ -143,7 +150,11 @@ function FeedCard({ item, onReact, onShare, onSave, hasReacted, hasSaved }: Feed
           onPress={() => onReact(item.id)}
           activeOpacity={0.75}
         >
-          <Text style={styles.actionIcon}>{hasReacted ? '❤️' : '🤍'}</Text>
+          <Ionicons
+            name={hasReacted ? 'heart' : 'heart-outline'}
+            size={18}
+            color={hasReacted ? '#EF4444' : colors.darkGray}
+          />
           <Text style={[styles.actionText, hasReacted ? styles.actionTextActive : null]}>
             {item.reaction_count}
           </Text>
@@ -154,8 +165,8 @@ function FeedCard({ item, onReact, onShare, onSave, hasReacted, hasSaved }: Feed
           onPress={() => onShare(item)}
           activeOpacity={0.75}
         >
-          <Text style={styles.actionIcon}>↗</Text>
-          <Text style={styles.actionText}>Share</Text>
+          <Ionicons name="share-social-outline" size={18} color={colors.darkGray} />
+          <Text style={styles.actionText}>{t('share')}</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -163,9 +174,13 @@ function FeedCard({ item, onReact, onShare, onSave, hasReacted, hasSaved }: Feed
           onPress={() => onSave(item.id)}
           activeOpacity={0.75}
         >
-          <Text style={styles.actionIcon}>{hasSaved ? '🔖' : '🏷️'}</Text>
+          <Ionicons
+            name={hasSaved ? 'bookmark' : 'bookmark-outline'}
+            size={18}
+            color={hasSaved ? colors.accent : colors.darkGray}
+          />
           <Text style={[styles.actionText, hasSaved ? styles.actionTextSaved : null]}>
-            {hasSaved ? 'Saved' : 'Save'}
+            {hasSaved ? t('saved') : t('save')}
           </Text>
         </TouchableOpacity>
       </View>
@@ -179,8 +194,11 @@ function FeedCard({ item, onReact, onShare, onSave, hasReacted, hasSaved }: Feed
 export default function HomeScreen(): React.JSX.Element {
   const router = useRouter();
   const { user } = useAuth();
-  const calendarRef = useRef<ScrollView>(null);
+  const { colors, isDarkMode } = useTheme();
+  const { t } = useTranslation();
+  const styles = getStyles(colors, isDarkMode);
 
+  const calendarRef = useRef<ScrollView>(null);
   const calendarDays = buildCalendarDays();
   const todayIndex = calendarDays.length - 1;
 
@@ -433,9 +451,11 @@ export default function HomeScreen(): React.JSX.Element {
         onSave={handleSave}
         hasReacted={reactedPosts.has(item.id)}
         hasSaved={savedPosts.has(item.id)}
+        colors={colors}
+        t={t}
       />
     ),
-    [handleReact, handleShare, handleSave, reactedPosts, savedPosts]
+    [handleReact, handleShare, handleSave, reactedPosts, savedPosts, colors, t]
   );
 
   const keyExtractor = useCallback(
@@ -447,10 +467,10 @@ export default function HomeScreen(): React.JSX.Element {
     if (!hasMore) return null;
     return (
       <View style={styles.footerLoader}>
-        <ActivityIndicator color={COLORS.primary} />
+        <ActivityIndicator color={colors.accent} />
       </View>
     );
-  }, [hasMore]);
+  }, [hasMore, colors]);
 
   const renderHeader = useCallback((): React.JSX.Element => (
     <>
@@ -459,33 +479,34 @@ export default function HomeScreen(): React.JSX.Element {
 
       {/* Feed label */}
       <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>Today's Feed</Text>
+        <Text style={styles.sectionTitle}>{t('home.title')}</Text>
         <Text style={styles.sectionSubtitle}>
           {calendarDays[selectedDayIndex]?.month}{' '}
           {calendarDays[selectedDayIndex]?.dayNum}
         </Text>
       </View>
     </>
-  ), [selectedDayIndex, calendarDays, router]);
+  ), [selectedDayIndex, calendarDays, router, t, styles]);
 
   // ----------------------------------------------------------------
   // Render
   // ----------------------------------------------------------------
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={COLORS.primary} />
+      <StatusBar barStyle="light-content" backgroundColor={colors.primaryDark} />
 
       {/* App Bar */}
-      <LinearGradient colors={[COLORS.primary, COLORS.primaryDark]} style={styles.appBar}>
+      <LinearGradient colors={[colors.primary, colors.primaryDark]} style={styles.appBar}>
         <View style={styles.appBarContent}>
           <View>
-            <Text style={styles.appBarLogo}>Too Humble</Text>
+            {/* Custom BrandText Logo */}
+            <BrandText size={22} colorMode="dark" />
           </View>
           <TouchableOpacity
             onPress={() => router.push('/(tabs)/notifications')}
             style={styles.appBarIcon}
           >
-            <Text style={styles.appBarIconText}>🔔</Text>
+            <Ionicons name="notifications-outline" size={20} color="#FFFFFF" />
           </TouchableOpacity>
         </View>
 
@@ -536,18 +557,18 @@ export default function HomeScreen(): React.JSX.Element {
       {/* Feed */}
       {isLoading ? (
         <View style={styles.centered}>
-          <ActivityIndicator size="large" color={COLORS.primary} />
-          <Text style={styles.loadingText}>Loading feed...</Text>
+          <ActivityIndicator size="large" color={colors.accent} />
+          <Text style={styles.loadingText}>{t('loading.feed')}</Text>
         </View>
       ) : hasError ? (
         <View style={styles.centered}>
-          <Text style={styles.errorEmoji}>⚠️</Text>
-          <Text style={styles.errorText}>Couldn't load content.</Text>
+          <Ionicons name="warning-outline" size={48} color={colors.error} style={{ marginBottom: 12 }} />
+          <Text style={styles.errorText}>{t('error.load')}</Text>
           <TouchableOpacity
             style={styles.retryButton}
             onPress={() => fetchPosts(true)}
           >
-            <Text style={styles.retryButtonText}>Retry</Text>
+            <Text style={styles.retryButtonText}>{t('retry')}</Text>
           </TouchableOpacity>
         </View>
       ) : (
@@ -559,10 +580,12 @@ export default function HomeScreen(): React.JSX.Element {
           ListFooterComponent={renderFooter}
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
-              <Text style={styles.emptyEmoji}>📝</Text>
-              <Text style={styles.emptyText}>No content yet.</Text>
+              <View style={styles.emptyIconContainer}>
+                <Ionicons name="newspaper-outline" size={48} color={colors.accent} />
+              </View>
+              <Text style={styles.emptyText}>{t('home.empty.title')}</Text>
               <Text style={styles.emptySubtext}>
-                Admins will publish quotes, verses, and videos soon.
+                {t('home.empty.subtitle')}
               </Text>
             </View>
           }
@@ -572,8 +595,8 @@ export default function HomeScreen(): React.JSX.Element {
             <RefreshControl
               refreshing={isRefreshing}
               onRefresh={handleRefresh}
-              tintColor={COLORS.primary}
-              colors={[COLORS.primary]}
+              tintColor={colors.accent}
+              colors={[colors.accent]}
             />
           }
           showsVerticalScrollIndicator={false}
@@ -587,227 +610,239 @@ export default function HomeScreen(): React.JSX.Element {
 // -----------------------------------------------------------------------
 // Styles
 // -----------------------------------------------------------------------
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.backgroundPrimary },
-  appBar: {
-    paddingTop: 48,
-    paddingBottom: 0,
-  },
-  appBarContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: SPACING.base,
-    paddingBottom: SPACING.md,
-  },
-  appBarLogo: {
-    fontSize: TYPOGRAPHY.fontSize.xl,
-    fontWeight: '800',
-    color: COLORS.white,
-    letterSpacing: 0.5,
-  },
-  appBarIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: COLORS.overlayLight,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  appBarIconText: { fontSize: 20 },
-  calendarStrip: { marginBottom: 0 },
-  calendarContent: {
-    paddingHorizontal: SPACING.base,
-    paddingBottom: SPACING.md,
-  },
-  calendarDay: {
-    alignItems: 'center',
-    width: 60,
-    paddingVertical: SPACING.sm,
-    marginRight: SPACING.xs,
-    borderRadius: BORDER_RADIUS.md,
-  },
-  calendarDayActive: {
-    backgroundColor: COLORS.accent,
-  },
-  calendarMonth: {
-    fontSize: TYPOGRAPHY.fontSize.xs,
-    color: COLORS.accentLight,
-    fontWeight: '600',
-    letterSpacing: 0.5,
-  },
-  calendarDayNum: {
-    fontSize: TYPOGRAPHY.fontSize.lg,
-    fontWeight: '700',
-    color: COLORS.white,
-  },
-  calendarTextActive: {
-    color: COLORS.primary,
-  },
-  calendarTodayNum: {
-    color: COLORS.accent,
-  },
-  todayDot: {
-    fontSize: 20,
-    color: COLORS.accent,
-    lineHeight: 10,
-  },
-  listContent: {
-    paddingBottom: SPACING['3xl'],
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: SPACING['2xl'],
-    paddingVertical: SPACING.md,
-    marginTop: SPACING.sm,
-  },
-  sectionTitle: {
-    fontSize: TYPOGRAPHY.fontSize.lg,
-    fontWeight: '700',
-    color: COLORS.charcoal,
-  },
-  sectionSubtitle: {
-    fontSize: TYPOGRAPHY.fontSize.sm,
-    color: COLORS.midGray,
-  },
-  feedCard: {
-    backgroundColor: COLORS.white,
-    borderRadius: BORDER_RADIUS.xl,
-    marginHorizontal: SPACING.base,
-    marginBottom: SPACING.base,
-    overflow: 'hidden',
-    ...SHADOWS.md,
-  },
-  cardHeader: {
-    padding: SPACING.md,
-  },
-  cardHeaderLeft: { flexDirection: 'row', alignItems: 'center' },
-  contentTypeBadge: {
-    backgroundColor: COLORS.overlayLight,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: 4,
-    borderRadius: BORDER_RADIUS.full,
-  },
-  contentTypeText: {
-    fontSize: TYPOGRAPHY.fontSize.xs,
-    color: COLORS.white,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
-  cardMediaContainer: { width: CARD_WIDTH },
-  videoThumbnail: { position: 'relative' },
-  mediaImage: { width: CARD_WIDTH, height: 200 },
-  playOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: COLORS.overlayDark,
-  },
-  playIcon: { fontSize: 48, color: COLORS.white },
-  cardBody: { padding: SPACING.base },
-  cardTitle: {
-    fontSize: TYPOGRAPHY.fontSize.md,
-    fontWeight: '700',
-    color: COLORS.charcoal,
-    marginBottom: SPACING.xs,
-  },
-  cardBody_text: {
-    fontSize: TYPOGRAPHY.fontSize.base,
-    color: COLORS.darkGray,
-    lineHeight: TYPOGRAPHY.fontSize.base * 1.6,
-    marginBottom: SPACING.sm,
-  },
-  cardAuthor: {
-    fontSize: TYPOGRAPHY.fontSize.sm,
-    color: COLORS.primary,
-    fontWeight: '600',
-  },
-  cardActions: {
-    flexDirection: 'row',
-    borderTopWidth: 1,
-    borderTopColor: COLORS.lightGray,
-    paddingVertical: SPACING.sm,
-    paddingHorizontal: SPACING.base,
-    gap: SPACING.xl,
-  },
-  actionBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.xs,
-    paddingVertical: SPACING.xs,
-    paddingHorizontal: SPACING.md,
-    borderRadius: BORDER_RADIUS.full,
-  },
-  actionBtnActive: {
-    backgroundColor: '#FFF0F0',
-  },
-  actionIcon: { fontSize: 18 },
-  actionText: {
-    fontSize: TYPOGRAPHY.fontSize.sm,
-    color: COLORS.darkGray,
-    fontWeight: '600',
-  },
-  actionTextActive: { color: COLORS.error },
-  actionBtnSaved: {
-    backgroundColor: '#FFF8E1',
-  },
-  actionTextSaved: { color: COLORS.accent },
-  centered: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: SPACING['2xl'],
-  },
-  loadingText: {
-    marginTop: SPACING.md,
-    fontSize: TYPOGRAPHY.fontSize.sm,
-    color: COLORS.midGray,
-  },
-  errorEmoji: { fontSize: 40, marginBottom: SPACING.md },
-  errorText: {
-    fontSize: TYPOGRAPHY.fontSize.base,
-    color: COLORS.darkGray,
-    textAlign: 'center',
-    marginBottom: SPACING.md,
-  },
-  retryButton: {
-    backgroundColor: COLORS.primary,
-    paddingHorizontal: SPACING['2xl'],
-    paddingVertical: SPACING.md,
-    borderRadius: BORDER_RADIUS.full,
-  },
-  retryButtonText: {
-    color: COLORS.white,
-    fontWeight: '700',
-    fontSize: TYPOGRAPHY.fontSize.base,
-  },
-  emptyContainer: {
-    alignItems: 'center',
-    paddingTop: SPACING['4xl'],
-    paddingHorizontal: SPACING['2xl'],
-  },
-  emptyEmoji: { fontSize: 48, marginBottom: SPACING.md },
-  emptyText: {
-    fontSize: TYPOGRAPHY.fontSize.lg,
-    fontWeight: '700',
-    color: COLORS.charcoal,
-    marginBottom: SPACING.sm,
-  },
-  emptySubtext: {
-    fontSize: TYPOGRAPHY.fontSize.base,
-    color: COLORS.midGray,
-    textAlign: 'center',
-    lineHeight: TYPOGRAPHY.fontSize.base * 1.6,
-  },
-  footerLoader: {
-    paddingVertical: SPACING.xl,
-    alignItems: 'center',
-  },
-});
+const getCardStyles = (colors: any) =>
+  StyleSheet.create({
+    feedCard: {
+      backgroundColor: colors.backgroundCard,
+      borderRadius: BORDER_RADIUS.xl,
+      marginHorizontal: SPACING.base,
+      marginBottom: SPACING.base,
+      overflow: 'hidden',
+      borderWidth: 1,
+      borderColor: colors.lightGray,
+      ...SHADOWS.md,
+    },
+    cardHeader: {
+      padding: SPACING.md,
+    },
+    cardHeaderLeft: { flexDirection: 'row', alignItems: 'center' },
+    contentTypeBadge: {
+      backgroundColor: colors.overlayLight,
+      paddingHorizontal: SPACING.md,
+      paddingVertical: 4,
+      borderRadius: BORDER_RADIUS.full,
+    },
+    contentTypeText: {
+      fontSize: TYPOGRAPHY.fontSize.xs,
+      color: '#FFFFFF',
+      fontWeight: '600',
+      textTransform: 'uppercase',
+      letterSpacing: 1,
+    },
+    cardMediaContainer: { width: CARD_WIDTH },
+    videoThumbnail: { position: 'relative' },
+    mediaImage: { width: CARD_WIDTH, height: 220 },
+    playOverlay: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: 'rgba(0,0,0,0.4)',
+    },
+    cardBody: { padding: SPACING.base },
+    cardTitle: {
+      fontSize: TYPOGRAPHY.fontSize.md,
+      fontWeight: '700',
+      color: colors.charcoal,
+      marginBottom: SPACING.xs,
+    },
+    cardBodyText: {
+      fontSize: TYPOGRAPHY.fontSize.base,
+      color: colors.darkGray,
+      lineHeight: TYPOGRAPHY.fontSize.base * 1.6,
+      marginBottom: SPACING.sm,
+    },
+    cardAuthor: {
+      fontSize: TYPOGRAPHY.fontSize.sm,
+      color: colors.accent,
+      fontWeight: '700',
+    },
+    cardActions: {
+      flexDirection: 'row',
+      borderTopWidth: 1,
+      borderTopColor: colors.lightGray,
+      paddingVertical: SPACING.sm,
+      paddingHorizontal: SPACING.base,
+      justifyContent: 'space-between',
+    },
+    actionBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: SPACING.xs,
+      paddingVertical: SPACING.xs,
+      paddingHorizontal: SPACING.md,
+      borderRadius: BORDER_RADIUS.full,
+    },
+    actionBtnActive: {
+      backgroundColor: 'rgba(239, 68, 68, 0.08)',
+    },
+    actionText: {
+      fontSize: TYPOGRAPHY.fontSize.sm,
+      color: colors.darkGray,
+      fontWeight: '600',
+    },
+    actionTextActive: { color: '#EF4444' },
+    actionBtnSaved: {
+      backgroundColor: 'rgba(240, 165, 0, 0.08)',
+    },
+    actionTextSaved: { color: colors.accent },
+  });
+
+const getStyles = (colors: any, isDarkMode: boolean) =>
+  StyleSheet.create({
+    container: { flex: 1, backgroundColor: colors.backgroundPrimary },
+    appBar: {
+      paddingTop: 48,
+      paddingBottom: 0,
+    },
+    appBarContent: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: SPACING.base,
+      paddingBottom: SPACING.md,
+    },
+    appBarIcon: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      backgroundColor: 'rgba(255, 255, 255, 0.12)',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    calendarStrip: { marginBottom: 0 },
+    calendarContent: {
+      paddingHorizontal: SPACING.base,
+      paddingBottom: SPACING.md,
+    },
+    calendarDay: {
+      alignItems: 'center',
+      width: 60,
+      paddingVertical: SPACING.sm,
+      marginRight: SPACING.xs,
+      borderRadius: BORDER_RADIUS.md,
+    },
+    calendarDayActive: {
+      backgroundColor: colors.accent,
+    },
+    calendarMonth: {
+      fontSize: TYPOGRAPHY.fontSize.xs,
+      color: colors.accentLight,
+      fontWeight: '600',
+      letterSpacing: 0.5,
+    },
+    calendarDayNum: {
+      fontSize: TYPOGRAPHY.fontSize.lg,
+      fontWeight: '700',
+      color: '#FFFFFF',
+    },
+    calendarTextActive: {
+      color: '#0A0D16', // Dark text on active gold day
+    },
+    calendarTodayNum: {
+      color: colors.accent,
+    },
+    todayDot: {
+      fontSize: 20,
+      color: colors.accent,
+      lineHeight: 10,
+    },
+    listContent: {
+      paddingBottom: SPACING['3xl'],
+    },
+    sectionHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: SPACING['2xl'],
+      paddingVertical: SPACING.md,
+      marginTop: SPACING.sm,
+    },
+    sectionTitle: {
+      fontSize: TYPOGRAPHY.fontSize.lg,
+      fontWeight: '700',
+      color: colors.charcoal,
+    },
+    sectionSubtitle: {
+      fontSize: TYPOGRAPHY.fontSize.sm,
+      color: colors.midGray,
+    },
+    footerLoader: {
+      paddingVertical: SPACING.md,
+      alignItems: 'center',
+    },
+    centered: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: SPACING['2xl'],
+    },
+    loadingText: {
+      marginTop: SPACING.md,
+      fontSize: TYPOGRAPHY.fontSize.sm,
+      color: colors.midGray,
+    },
+    errorText: {
+      fontSize: TYPOGRAPHY.fontSize.base,
+      color: colors.darkGray,
+      textAlign: 'center',
+      marginBottom: SPACING.md,
+    },
+    retryButton: {
+      backgroundColor: colors.accent,
+      paddingHorizontal: SPACING['2xl'],
+      paddingVertical: SPACING.md,
+      borderRadius: BORDER_RADIUS.full,
+    },
+    retryButtonText: {
+      color: '#0A0D16',
+      fontWeight: '700',
+      fontSize: TYPOGRAPHY.fontSize.base,
+    },
+    emptyContainer: {
+      alignItems: 'center',
+      paddingTop: SPACING['5xl'],
+      paddingHorizontal: SPACING['2xl'],
+    },
+    emptyIconContainer: {
+      width: 90,
+      height: 90,
+      borderRadius: 45,
+      backgroundColor: colors.backgroundCard,
+      borderWidth: 1,
+      borderColor: colors.lightGray,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginBottom: SPACING.lg,
+      elevation: 2,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.05,
+      shadowRadius: 4,
+    },
+    emptyText: {
+      fontSize: TYPOGRAPHY.fontSize.lg,
+      fontWeight: '700',
+      color: colors.charcoal,
+      marginBottom: SPACING.xs,
+    },
+    emptySubtext: {
+      fontSize: TYPOGRAPHY.fontSize.base,
+      color: colors.midGray,
+      textAlign: 'center',
+      lineHeight: 22,
+    },
+  });

@@ -1,6 +1,7 @@
 // =============================================================================
 // TOO HUMBLE - ADMIN DASHBOARD
 // RBAC guard, realtime new user alerts, flagged content moderation grid
+// Supports dynamic theme toggling and dynamic colors.
 // =============================================================================
 
 import React, { useCallback, useEffect, useState } from 'react';
@@ -13,20 +14,28 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { RealtimePostgresInsertPayload } from '@supabase/supabase-js';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
+import { useTheme } from '../../context/ThemeContext';
 import { Profile, CommunityPost, CommunityPostUpdate } from '../../types/database.types';
-import { COLORS, TYPOGRAPHY, SPACING, BORDER_RADIUS, SHADOWS } from '../../constants/theme';
+import { TYPOGRAPHY, SPACING, BORDER_RADIUS, SHADOWS } from '../../constants/theme';
 
 
 // -----------------------------------------------------------------------
 // Stat card
 // -----------------------------------------------------------------------
-interface StatCardProps { label: string; value: string | number; emoji: string; color: string }
-function StatCard({ label, value, emoji, color }: StatCardProps): React.JSX.Element {
+interface StatCardProps {
+  label: string;
+  value: string | number;
+  emoji: string;
+  color: string;
+  colors: any;
+}
+function StatCard({ label, value, emoji, color, colors }: StatCardProps): React.JSX.Element {
+  const styles = getStyles(colors);
   return (
-    <View style={[adminStyles.statCard, { borderTopColor: color }]}>
-      <Text style={adminStyles.statEmoji}>{emoji}</Text>
-      <Text style={[adminStyles.statValue, { color }]}>{value}</Text>
-      <Text style={adminStyles.statLabel}>{label}</Text>
+    <View style={[styles.statCard, { borderTopColor: color }]}>
+      <Text style={styles.statEmoji}>{emoji}</Text>
+      <Text style={[styles.statValue, { color }]}>{value}</Text>
+      <Text style={styles.statLabel}>{label}</Text>
     </View>
   );
 }
@@ -37,6 +46,8 @@ function StatCard({ label, value, emoji, color }: StatCardProps): React.JSX.Elem
 export default function AdminDashboard(): React.JSX.Element {
   const router = useRouter();
   const { role, isLoading } = useAuth();
+  const { colors } = useTheme();
+  const styles = getStyles(colors);
 
   const [stats, setStats] = useState({ users: 0, posts: 0, flagged: 0, feed: 0 });
   const [flaggedPosts, setFlaggedPosts] = useState<CommunityPost[]>([]);
@@ -130,35 +141,35 @@ export default function AdminDashboard(): React.JSX.Element {
   // ----------------------------------------------------------------
   const renderFlagged = useCallback(
     ({ item }: ListRenderItemInfo<CommunityPost>): React.JSX.Element => (
-      <View style={adminStyles.flaggedRow}>
-        <View style={adminStyles.flaggedInfo}>
-          <Text style={adminStyles.flaggedAuthor} numberOfLines={1}>
+      <View style={styles.flaggedRow}>
+        <View style={styles.flaggedInfo}>
+          <Text style={styles.flaggedAuthor} numberOfLines={1}>
             {item.profiles?.full_name ?? 'Unknown'}
           </Text>
-          <Text style={adminStyles.flaggedCaption} numberOfLines={2}>
+          <Text style={styles.flaggedCaption} numberOfLines={2}>
             {item.caption || '(no caption)'}
           </Text>
-          <Text style={adminStyles.flaggedTime}>
+          <Text style={styles.flaggedTime}>
             {new Date(item.created_at).toLocaleDateString()}
           </Text>
         </View>
-        <View style={adminStyles.flaggedActions}>
+        <View style={styles.flaggedActions}>
           <TouchableOpacity
-            style={adminStyles.dismissBtn}
+            style={styles.dismissBtn}
             onPress={() => handleDismissFlag(item.id)}
           >
-            <Text style={adminStyles.dismissBtnText}>✓ Dismiss</Text>
+            <Text style={styles.dismissBtnText}>✓ Dismiss</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={adminStyles.deleteBtn}
+            style={styles.deleteBtn}
             onPress={() => handleDeletePost(item.id)}
           >
-            <Text style={adminStyles.deleteBtnText}>🗑 Delete</Text>
+            <Text style={styles.deleteBtnText}>🗑 Delete</Text>
           </TouchableOpacity>
         </View>
       </View>
     ),
-    [handleDismissFlag, handleDeletePost]
+    [handleDismissFlag, handleDeletePost, styles]
   );
 
   // ----------------------------------------------------------------
@@ -166,69 +177,69 @@ export default function AdminDashboard(): React.JSX.Element {
   // ----------------------------------------------------------------
   if (isLoading || role !== 'admin') {
     return (
-      <View style={adminStyles.centered}>
-        <ActivityIndicator size="large" color={COLORS.primary} />
+      <View style={styles.centered}>
+        <ActivityIndicator size="large" color={colors.accent} />
       </View>
     );
   }
 
   return (
-    <View style={adminStyles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={COLORS.primaryDark} />
-      <LinearGradient colors={[COLORS.primaryDark, COLORS.primary]} style={adminStyles.header}>
-        <Text style={adminStyles.headerBadge}>⚙️ ADMIN</Text>
-        <Text style={adminStyles.headerTitle}>Dashboard</Text>
-        <Text style={adminStyles.headerSub}>Too Humble Control Center</Text>
+    <View style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor={colors.primaryDark} />
+      <LinearGradient colors={[colors.primary, colors.primaryDark]} style={styles.header}>
+        <Text style={styles.headerBadge}>⚙️ ADMIN</Text>
+        <Text style={styles.headerTitle}>Dashboard</Text>
+        <Text style={styles.headerSub}>Too Humble Control Center</Text>
       </LinearGradient>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={adminStyles.content}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
         {/* Stats row */}
-        <Text style={adminStyles.sectionTitle}>Overview</Text>
+        <Text style={styles.sectionTitle}>Overview</Text>
         {isFetching ? (
-          <ActivityIndicator color={COLORS.primary} style={{ marginVertical: SPACING.xl }} />
+          <ActivityIndicator color={colors.accent} style={{ marginVertical: SPACING.xl }} />
         ) : (
-          <View style={adminStyles.statsRow}>
-            <StatCard label="Total Users" value={stats.users} emoji="👥" color={COLORS.info} />
-            <StatCard label="Posts" value={stats.posts} emoji="📝" color={COLORS.success} />
-            <StatCard label="Flagged" value={stats.flagged} emoji="🚩" color={COLORS.error} />
-            <StatCard label="Feed Items" value={stats.feed} emoji="📌" color={COLORS.accent} />
+          <View style={styles.statsRow}>
+            <StatCard label="Total Users" value={stats.users} emoji="👥" color={colors.info} colors={colors} />
+            <StatCard label="Posts" value={stats.posts} emoji="📝" color={colors.success} colors={colors} />
+            <StatCard label="Flagged" value={stats.flagged} emoji="🚩" color={colors.error} colors={colors} />
+            <StatCard label="Feed Items" value={stats.feed} emoji="📌" color={colors.accent} colors={colors} />
           </View>
         )}
 
         {/* New user alerts */}
-        <Text style={adminStyles.sectionTitle}>🔔 New User Alerts</Text>
+        <Text style={styles.sectionTitle}>🔔 New User Alerts</Text>
         {newUserAlerts.length === 0 ? (
-          <View style={adminStyles.emptyAlert}>
-            <Text style={adminStyles.emptyAlertText}>No new registrations since you logged in.</Text>
+          <View style={styles.emptyAlert}>
+            <Text style={styles.emptyAlertText}>No new registrations since you logged in.</Text>
           </View>
         ) : (
           newUserAlerts.map((u) => (
-            <View key={u.id} style={adminStyles.alertRow}>
-              <View style={adminStyles.alertDot} />
-              <View style={adminStyles.alertInfo}>
-                <Text style={adminStyles.alertName}>{u.full_name}</Text>
-                <Text style={adminStyles.alertTime}>
+            <View key={u.id} style={styles.alertRow}>
+              <View style={styles.alertDot} />
+              <View style={styles.alertInfo}>
+                <Text style={styles.alertName}>{u.full_name}</Text>
+                <Text style={styles.alertTime}>
                   {new Date(u.created_at).toLocaleTimeString()}
                 </Text>
               </View>
-              <Text style={adminStyles.alertBadge}>{u.role}</Text>
+              <Text style={styles.alertBadge}>{u.role}</Text>
             </View>
           ))
         )}
 
         {/* Moderation grid */}
-        <View style={adminStyles.sectionHeader}>
-          <Text style={adminStyles.sectionTitle}>🚩 Flagged Content</Text>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>🚩 Flagged Content</Text>
           <TouchableOpacity onPress={fetchData}>
-            <Text style={adminStyles.refreshText}>Refresh</Text>
+            <Text style={styles.refreshText}>Refresh</Text>
           </TouchableOpacity>
         </View>
 
         {isFetching ? (
-          <ActivityIndicator color={COLORS.primary} />
+          <ActivityIndicator color={colors.accent} />
         ) : flaggedPosts.length === 0 ? (
-          <View style={adminStyles.emptyAlert}>
-            <Text style={adminStyles.emptyAlertText}>No flagged content. Community looks clean! ✅</Text>
+          <View style={styles.emptyAlert}>
+            <Text style={styles.emptyAlertText}>No flagged content. Community looks clean! ✅</Text>
           </View>
         ) : (
           <FlatList<CommunityPost>
@@ -240,91 +251,92 @@ export default function AdminDashboard(): React.JSX.Element {
         )}
 
         {/* Quick links */}
-        <Text style={adminStyles.sectionTitle}>Quick Actions</Text>
-        <TouchableOpacity style={adminStyles.quickAction} onPress={() => router.push('/(admin)/create-content' as any)}>
-          <Text style={adminStyles.quickActionEmoji}>➕</Text>
-          <Text style={adminStyles.quickActionText}>Publish New Content</Text>
-          <Text style={adminStyles.quickChevron}>›</Text>
+        <Text style={styles.sectionTitle}>Quick Actions</Text>
+        <TouchableOpacity style={styles.quickAction} onPress={() => router.push('/(admin)/create-content' as any)}>
+          <Text style={styles.quickActionEmoji}>➕</Text>
+          <Text style={styles.quickActionText}>Publish New Content</Text>
+          <Text style={styles.quickChevron}>›</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={adminStyles.quickAction} onPress={() => router.push('/(admin)/users' as any)}>
-          <Text style={adminStyles.quickActionEmoji}>👥</Text>
-          <Text style={adminStyles.quickActionText}>Manage Users</Text>
-          <Text style={adminStyles.quickChevron}>›</Text>
+        <TouchableOpacity style={styles.quickAction} onPress={() => router.push('/(admin)/users' as any)}>
+          <Text style={styles.quickActionEmoji}>👥</Text>
+          <Text style={styles.quickActionText}>Manage Users</Text>
+          <Text style={styles.quickChevron}>›</Text>
         </TouchableOpacity>
       </ScrollView>
     </View>
   );
 }
 
-const adminStyles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.backgroundPrimary },
-  centered: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.backgroundPrimary },
-  header: { paddingTop: 52, paddingBottom: SPACING.xl, paddingHorizontal: SPACING.base },
-  headerBadge: {
-    fontSize: TYPOGRAPHY.fontSize.xs, color: COLORS.accentLight, fontWeight: '700',
-    letterSpacing: 1, marginBottom: SPACING.xs,
-  },
-  headerTitle: { fontSize: TYPOGRAPHY.fontSize['2xl'], fontWeight: '800', color: COLORS.white },
-  headerSub: { fontSize: TYPOGRAPHY.fontSize.sm, color: 'rgba(255,255,255,0.6)', marginTop: 4 },
-  content: { padding: SPACING.base, paddingBottom: SPACING['5xl'] },
-  sectionTitle: {
-    fontSize: TYPOGRAPHY.fontSize.md, fontWeight: '700', color: COLORS.charcoal,
-    marginTop: SPACING.xl, marginBottom: SPACING.md,
-  },
-  sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: SPACING.xl },
-  refreshText: { fontSize: TYPOGRAPHY.fontSize.sm, color: COLORS.primary, fontWeight: '600' },
-  statsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.md },
-  statCard: {
-    flex: 1, minWidth: 140, backgroundColor: COLORS.white, borderRadius: BORDER_RADIUS.lg,
-    padding: SPACING.md, borderTopWidth: 4, alignItems: 'center', ...SHADOWS.sm,
-  },
-  statEmoji: { fontSize: 24, marginBottom: SPACING.xs },
-  statValue: { fontSize: TYPOGRAPHY.fontSize['2xl'], fontWeight: '800' },
-  statLabel: { fontSize: TYPOGRAPHY.fontSize.xs, color: COLORS.midGray, marginTop: 2, textAlign: 'center' },
-  alertRow: {
-    flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.white,
-    borderRadius: BORDER_RADIUS.md, padding: SPACING.md, marginBottom: SPACING.sm, ...SHADOWS.sm,
-  },
-  alertDot: {
-    width: 10, height: 10, borderRadius: 5, backgroundColor: COLORS.success, marginRight: SPACING.md,
-  },
-  alertInfo: { flex: 1 },
-  alertName: { fontSize: TYPOGRAPHY.fontSize.base, fontWeight: '600', color: COLORS.charcoal },
-  alertTime: { fontSize: TYPOGRAPHY.fontSize.xs, color: COLORS.midGray, marginTop: 2 },
-  alertBadge: {
-    fontSize: TYPOGRAPHY.fontSize.xs, color: COLORS.primary, fontWeight: '700',
-    backgroundColor: COLORS.offWhite, paddingHorizontal: SPACING.sm, paddingVertical: 4,
-    borderRadius: BORDER_RADIUS.full,
-  },
-  emptyAlert: {
-    backgroundColor: COLORS.offWhite, borderRadius: BORDER_RADIUS.md,
-    padding: SPACING.lg, alignItems: 'center',
-  },
-  emptyAlertText: { color: COLORS.midGray, fontSize: TYPOGRAPHY.fontSize.sm, textAlign: 'center' },
-  flaggedRow: {
-    backgroundColor: COLORS.white, borderRadius: BORDER_RADIUS.lg, padding: SPACING.md,
-    marginBottom: SPACING.sm, borderLeftWidth: 4, borderLeftColor: COLORS.error, ...SHADOWS.sm,
-  },
-  flaggedInfo: { marginBottom: SPACING.sm },
-  flaggedAuthor: { fontSize: TYPOGRAPHY.fontSize.base, fontWeight: '700', color: COLORS.charcoal },
-  flaggedCaption: { fontSize: TYPOGRAPHY.fontSize.sm, color: COLORS.darkGray, marginTop: 4 },
-  flaggedTime: { fontSize: TYPOGRAPHY.fontSize.xs, color: COLORS.midGray, marginTop: 4 },
-  flaggedActions: { flexDirection: 'row', gap: SPACING.md },
-  dismissBtn: {
-    flex: 1, backgroundColor: COLORS.offWhite, borderRadius: BORDER_RADIUS.md,
-    paddingVertical: SPACING.sm, alignItems: 'center', borderWidth: 1, borderColor: COLORS.lightGray,
-  },
-  dismissBtnText: { color: COLORS.success, fontWeight: '700', fontSize: TYPOGRAPHY.fontSize.sm },
-  deleteBtn: {
-    flex: 1, backgroundColor: '#FFF5F5', borderRadius: BORDER_RADIUS.md,
-    paddingVertical: SPACING.sm, alignItems: 'center', borderWidth: 1, borderColor: '#FED7D7',
-  },
-  deleteBtnText: { color: COLORS.error, fontWeight: '700', fontSize: TYPOGRAPHY.fontSize.sm },
-  quickAction: {
-    flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.white,
-    borderRadius: BORDER_RADIUS.lg, padding: SPACING.md, marginBottom: SPACING.sm, ...SHADOWS.sm,
-  },
-  quickActionEmoji: { fontSize: 22, marginRight: SPACING.md },
-  quickActionText: { flex: 1, fontSize: TYPOGRAPHY.fontSize.base, fontWeight: '600', color: COLORS.charcoal },
-  quickChevron: { fontSize: 22, color: COLORS.midGray },
-});
+const getStyles = (colors: any) =>
+  StyleSheet.create({
+    container: { flex: 1, backgroundColor: colors.backgroundPrimary },
+    centered: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.backgroundPrimary },
+    header: { paddingTop: 52, paddingBottom: SPACING.xl, paddingHorizontal: SPACING.base },
+    headerBadge: {
+      fontSize: TYPOGRAPHY.fontSize.xs, color: colors.accentLight, fontWeight: '700',
+      letterSpacing: 1, marginBottom: SPACING.xs,
+    },
+    headerTitle: { fontSize: TYPOGRAPHY.fontSize['2xl'], fontWeight: '800', color: '#FFFFFF' },
+    headerSub: { fontSize: TYPOGRAPHY.fontSize.sm, color: 'rgba(255,255,255,0.6)', marginTop: 4 },
+    content: { padding: SPACING.base, paddingBottom: SPACING['5xl'] },
+    sectionTitle: {
+      fontSize: TYPOGRAPHY.fontSize.md, fontWeight: '700', color: colors.charcoal,
+      marginTop: SPACING.xl, marginBottom: SPACING.md,
+    },
+    sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: SPACING.xl },
+    refreshText: { fontSize: TYPOGRAPHY.fontSize.sm, color: colors.accent, fontWeight: '600' },
+    statsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.md },
+    statCard: {
+      flex: 1, minWidth: 140, backgroundColor: colors.backgroundCard, borderRadius: BORDER_RADIUS.lg,
+      padding: SPACING.md, borderTopWidth: 4, alignItems: 'center', borderWidth: 1, borderColor: colors.lightGray, ...SHADOWS.sm,
+    },
+    statEmoji: { fontSize: 24, marginBottom: SPACING.xs },
+    statValue: { fontSize: TYPOGRAPHY.fontSize['2xl'], fontWeight: '800' },
+    statLabel: { fontSize: TYPOGRAPHY.fontSize.xs, color: colors.midGray, marginTop: 2, textAlign: 'center' },
+    alertRow: {
+      flexDirection: 'row', alignItems: 'center', backgroundColor: colors.backgroundCard,
+      borderRadius: BORDER_RADIUS.md, padding: SPACING.md, marginBottom: SPACING.sm, borderWidth: 1, borderColor: colors.lightGray, ...SHADOWS.sm,
+    },
+    alertDot: {
+      width: 10, height: 10, borderRadius: 5, backgroundColor: colors.success, marginRight: SPACING.md,
+    },
+    alertInfo: { flex: 1 },
+    alertName: { fontSize: TYPOGRAPHY.fontSize.base, fontWeight: '600', color: colors.charcoal },
+    alertTime: { fontSize: TYPOGRAPHY.fontSize.xs, color: colors.midGray, marginTop: 2 },
+    alertBadge: {
+      fontSize: TYPOGRAPHY.fontSize.xs, color: colors.accent, fontWeight: '700',
+      backgroundColor: colors.backgroundPrimary, paddingHorizontal: SPACING.sm, paddingVertical: 4,
+      borderRadius: BORDER_RADIUS.full, borderWidth: 1, borderColor: colors.lightGray,
+    },
+    emptyAlert: {
+      backgroundColor: colors.backgroundCard, borderRadius: BORDER_RADIUS.md,
+      padding: SPACING.lg, alignItems: 'center', borderWidth: 1, borderColor: colors.lightGray,
+    },
+    emptyAlertText: { color: colors.midGray, fontSize: TYPOGRAPHY.fontSize.sm, textAlign: 'center' },
+    flaggedRow: {
+      backgroundColor: colors.backgroundCard, borderRadius: BORDER_RADIUS.lg, padding: SPACING.md,
+      marginBottom: SPACING.sm, borderLeftWidth: 4, borderLeftColor: colors.error, borderWidth: 1, borderColor: colors.lightGray, ...SHADOWS.sm,
+    },
+    flaggedInfo: { marginBottom: SPACING.sm },
+    flaggedAuthor: { fontSize: TYPOGRAPHY.fontSize.base, fontWeight: '700', color: colors.charcoal },
+    flaggedCaption: { fontSize: TYPOGRAPHY.fontSize.sm, color: colors.darkGray, marginTop: 4 },
+    flaggedTime: { fontSize: TYPOGRAPHY.fontSize.xs, color: colors.midGray, marginTop: 4 },
+    flaggedActions: { flexDirection: 'row', gap: SPACING.md },
+    dismissBtn: {
+      flex: 1, backgroundColor: colors.backgroundPrimary, borderRadius: BORDER_RADIUS.md,
+      paddingVertical: SPACING.sm, alignItems: 'center', borderWidth: 1, borderColor: colors.lightGray,
+    },
+    dismissBtnText: { color: colors.success, fontWeight: '700', fontSize: TYPOGRAPHY.fontSize.sm },
+    deleteBtn: {
+      flex: 1, backgroundColor: colors.theme === 'dark' ? '#3B1A1A' : '#FFF5F5', borderRadius: BORDER_RADIUS.md,
+      paddingVertical: SPACING.sm, alignItems: 'center', borderWidth: 1, borderColor: colors.theme === 'dark' ? '#6B2F2F' : '#FED7D7',
+    },
+    deleteBtnText: { color: colors.error, fontWeight: '700', fontSize: TYPOGRAPHY.fontSize.sm },
+    quickAction: {
+      flexDirection: 'row', alignItems: 'center', backgroundColor: colors.backgroundCard,
+      borderRadius: BORDER_RADIUS.lg, padding: SPACING.md, marginBottom: SPACING.sm, borderWidth: 1, borderColor: colors.lightGray, ...SHADOWS.sm,
+    },
+    quickActionEmoji: { fontSize: 22, marginRight: SPACING.md },
+    quickActionText: { flex: 1, fontSize: TYPOGRAPHY.fontSize.base, fontWeight: '600', color: colors.charcoal },
+    quickChevron: { fontSize: 22, color: colors.midGray },
+  });

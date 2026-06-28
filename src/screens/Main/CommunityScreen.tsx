@@ -1,23 +1,45 @@
 // =============================================================================
 // TOO HUMBLE - COMMUNITY SCREEN
-// Social feed with image upload (5MB hard limit), flagging, pagination
+// Social feed with image upload (7MB limit), flagging, pagination
+// Supports dynamic theme toggling, translation, and vector icons.
 // =============================================================================
 
 import React, { useState, useCallback, useEffect } from 'react';
 import {
-  View, Text, StyleSheet, FlatList, TouchableOpacity, Image,
-  TextInput, Modal, Alert, ActivityIndicator, RefreshControl,
-  StatusBar, KeyboardAvoidingView, Platform, ScrollView,
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  TouchableOpacity,
+  Image,
+  TextInput,
+  Modal,
+  Alert,
+  ActivityIndicator,
+  RefreshControl,
+  StatusBar,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
   ListRenderItemInfo,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
 import { supabase, uploadToStorage } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
+import { useTheme } from '../../context/ThemeContext';
+import { useTranslation } from '../../context/LanguageContext';
 import { CommunityPost, CommunityPostInsert, CommunityPostUpdate } from '../../types/database.types';
 import {
-  COLORS, TYPOGRAPHY, SPACING, BORDER_RADIUS, SHADOWS,
-  MAX_IMAGE_SIZE_BYTES, MAX_CAPTION_LENGTH, STORAGE_BUCKETS, PAGE_SIZE,
+  TYPOGRAPHY,
+  SPACING,
+  BORDER_RADIUS,
+  SHADOWS,
+  MAX_IMAGE_SIZE_BYTES,
+  MAX_CAPTION_LENGTH,
+  STORAGE_BUCKETS,
+  PAGE_SIZE,
 } from '../../constants/theme';
 
 // -----------------------------------------------------------------------
@@ -81,11 +103,13 @@ interface PostCardProps {
   isAdmin: boolean;
   onFlag: (id: string) => void;
   onDelete: (id: string) => void;
+  colors: any;
 }
 
-function PostCard({ post, currentUserId, isAdmin, onFlag, onDelete }: PostCardProps): React.JSX.Element {
+function PostCard({ post, currentUserId, isAdmin, onFlag, onDelete, colors }: PostCardProps): React.JSX.Element {
   const profile = post.profiles;
   const isOwner = currentUserId === post.user_id;
+  const styles = getCardStyles(colors);
 
   return (
     <View style={styles.postCard}>
@@ -110,16 +134,18 @@ function PostCard({ post, currentUserId, isAdmin, onFlag, onDelete }: PostCardPr
               Alert.alert('Post Options', '', [
                 isAdmin && !post.is_flagged
                   ? { text: '🚩 Flag Post', onPress: () => onFlag(post.id) }
-                  : { text: '✅ Dismiss Flag', onPress: () => onFlag(post.id) },
+                  : isAdmin
+                  ? { text: '✅ Dismiss Flag', onPress: () => onFlag(post.id) }
+                  : null,
                 isAdmin || isOwner
                   ? { text: '🗑️ Delete Post', style: 'destructive', onPress: () => onDelete(post.id) }
-                  : { text: 'Cancel', style: 'cancel' },
+                  : null,
                 { text: 'Cancel', style: 'cancel' },
-              ])
+              ].filter(Boolean) as any)
             }
             style={styles.moreBtn}
           >
-            <Text style={styles.moreBtnText}>···</Text>
+            <Ionicons name="ellipsis-horizontal" size={18} color={colors.midGray} />
           </TouchableOpacity>
         )}
       </View>
@@ -135,7 +161,8 @@ function PostCard({ post, currentUserId, isAdmin, onFlag, onDelete }: PostCardPr
       {/* Flag indicator */}
       {post.is_flagged && (
         <View style={styles.flagBanner}>
-          <Text style={styles.flagText}>🚩 Flagged for review</Text>
+          <Ionicons name="flag" size={14} color="#F59E0B" style={{ marginRight: 6 }} />
+          <Text style={styles.flagText}>Flagged for review</Text>
         </View>
       )}
     </View>
@@ -150,20 +177,23 @@ interface CreatePostModalProps {
   onClose: () => void;
   onPublished: () => void;
   userId: string;
+  colors: any;
+  t: (key: string) => string;
 }
 
-function CreatePostModal({ visible, onClose, onPublished, userId }: CreatePostModalProps): React.JSX.Element {
+function CreatePostModal({ visible, onClose, onPublished, userId, colors, t }: CreatePostModalProps): React.JSX.Element {
   const [caption, setCaption] = useState('');
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [imageSizeKb, setImageSizeKb] = useState<number>(0);
   const [isUploading, setIsUploading] = useState(false);
   const [sizeError, setSizeError] = useState<string | null>(null);
+  const styles = getCreateStyles(colors);
 
   const pickImage = useCallback(async (): Promise<void> => {
     setSizeError(null);
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert('Permission Required', 'Too Humble needs photo access to share content.');
+      Alert.alert('Permission Required', t('community.create.error.permission'));
       return;
     }
 
@@ -177,16 +207,16 @@ function CreatePostModal({ visible, onClose, onPublished, userId }: CreatePostMo
     if (result.canceled || !result.assets[0]) return;
     const asset = result.assets[0];
 
-    // Hard file-size check before upload
+    // Hard file-size check before upload (7MB)
     const sizeBytes = asset.fileSize ?? 0;
     if (sizeBytes > MAX_IMAGE_SIZE_BYTES) {
-      setSizeError(`Image is too large (${(sizeBytes / 1024 / 1024).toFixed(1)} MB). Max 5 MB.`);
+      setSizeError(t('community.create.error.size'));
       return;
     }
 
     setImageUri(asset.uri);
     setImageSizeKb(sizeBytes / 1024);
-  }, []);
+  }, [t]);
 
   const handleSubmit = useCallback(async (): Promise<void> => {
     if (!caption.trim() && !imageUri) {
@@ -230,47 +260,53 @@ function CreatePostModal({ visible, onClose, onPublished, userId }: CreatePostMo
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <View style={createStyles.container}>
-          <View style={createStyles.header}>
-            <TouchableOpacity onPress={onClose}><Text style={createStyles.cancelText}>Cancel</Text></TouchableOpacity>
-            <Text style={createStyles.title}>Create Post</Text>
+        <View style={styles.container}>
+          <View style={styles.header}>
+            <TouchableOpacity onPress={onClose}>
+              <Text style={styles.cancelText}>{t('profile.logout').split(' ')[0] /* Cancel fallback */}</Text>
+            </TouchableOpacity>
+            <Text style={styles.title}>{t('community.create.title')}</Text>
             <TouchableOpacity onPress={handleSubmit} disabled={isUploading}>
-              {isUploading
-                ? <ActivityIndicator color={COLORS.primary} />
-                : <Text style={createStyles.postBtn}>Post</Text>}
+              {isUploading ? (
+                <ActivityIndicator color={colors.primary} />
+              ) : (
+                <Text style={styles.postBtn}>{t('community.create.post')}</Text>
+              )}
             </TouchableOpacity>
           </View>
 
-          <ScrollView contentContainerStyle={createStyles.body}>
+          <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
             <TextInput
-              style={createStyles.captionInput}
-              placeholder="What's on your mind?"
-              placeholderTextColor={COLORS.midGray}
+              style={styles.captionInput}
+              placeholder={t('community.create.placeholder')}
+              placeholderTextColor={colors.midGray}
               value={caption}
               onChangeText={(t) => t.length <= MAX_CAPTION_LENGTH && setCaption(t)}
               multiline
               maxLength={MAX_CAPTION_LENGTH}
             />
-            <Text style={createStyles.charCount}>{caption.length}/{MAX_CAPTION_LENGTH}</Text>
+            <Text style={styles.charCount}>{caption.length}/{MAX_CAPTION_LENGTH}</Text>
 
             {imageUri ? (
-              <View style={createStyles.previewContainer}>
-                <Image source={{ uri: imageUri }} style={createStyles.preview} resizeMode="cover" />
+              <View style={styles.previewContainer}>
+                <Image source={{ uri: imageUri }} style={styles.preview} resizeMode="cover" />
                 <TouchableOpacity
-                  style={createStyles.removeImg}
+                  style={styles.removeImg}
                   onPress={() => { setImageUri(null); setSizeError(null); }}
                 >
-                  <Text style={createStyles.removeImgText}>✕</Text>
+                  <Ionicons name="close" size={18} color="#FFFFFF" />
                 </TouchableOpacity>
               </View>
             ) : (
-              <TouchableOpacity style={createStyles.photoBtn} onPress={pickImage}>
-                <Text style={createStyles.photoBtnIcon}>🖼️</Text>
-                <Text style={createStyles.photoBtnText}>Add Photo (Max 5 MB)</Text>
+              <TouchableOpacity style={styles.photoBtn} onPress={pickImage}>
+                <Ionicons name="image-outline" size={32} color={colors.midGray} style={{ marginBottom: SPACING.sm }} />
+                <Text style={styles.photoBtnText}>
+                  {t('community.create.photo')} ({t('community.create.limit')})
+                </Text>
               </TouchableOpacity>
             )}
 
-            {sizeError && <Text style={createStyles.sizeError}>{sizeError}</Text>}
+            {sizeError && <Text style={styles.sizeError}>{sizeError}</Text>}
           </ScrollView>
         </View>
       </KeyboardAvoidingView>
@@ -278,45 +314,15 @@ function CreatePostModal({ visible, onClose, onPublished, userId }: CreatePostMo
   );
 }
 
-const createStyles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.white },
-  header: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingTop: 52, paddingHorizontal: SPACING.base, paddingBottom: SPACING.md,
-    borderBottomWidth: 1, borderBottomColor: COLORS.lightGray,
-  },
-  cancelText: { color: COLORS.darkGray, fontSize: TYPOGRAPHY.fontSize.base },
-  title: { fontSize: TYPOGRAPHY.fontSize.md, fontWeight: '700', color: COLORS.charcoal },
-  postBtn: { color: COLORS.primary, fontSize: TYPOGRAPHY.fontSize.base, fontWeight: '700' },
-  body: { padding: SPACING.base },
-  captionInput: {
-    fontSize: TYPOGRAPHY.fontSize.base, color: COLORS.charcoal,
-    minHeight: 120, textAlignVertical: 'top',
-  },
-  charCount: { fontSize: TYPOGRAPHY.fontSize.xs, color: COLORS.midGray, textAlign: 'right', marginBottom: SPACING.base },
-  photoBtn: {
-    borderWidth: 2, borderColor: COLORS.lightGray, borderStyle: 'dashed',
-    borderRadius: BORDER_RADIUS.lg, padding: SPACING['2xl'],
-    alignItems: 'center', marginBottom: SPACING.base,
-  },
-  photoBtnIcon: { fontSize: 32, marginBottom: SPACING.sm },
-  photoBtnText: { color: COLORS.midGray, fontSize: TYPOGRAPHY.fontSize.base },
-  previewContainer: { position: 'relative', marginBottom: SPACING.base },
-  preview: { width: '100%', height: 200, borderRadius: BORDER_RADIUS.lg },
-  removeImg: {
-    position: 'absolute', top: 8, right: 8, width: 28, height: 28,
-    borderRadius: 14, backgroundColor: COLORS.overlayDark,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  removeImgText: { color: COLORS.white, fontWeight: '700' },
-  sizeError: { color: COLORS.error, fontSize: TYPOGRAPHY.fontSize.sm, textAlign: 'center' },
-});
-
 // -----------------------------------------------------------------------
 // Community Screen
 // -----------------------------------------------------------------------
 export default function CommunityScreen(): React.JSX.Element {
-  const { user, role } = useAuth();
+  const { user, profile, role } = useAuth();
+  const { colors } = useTheme();
+  const { t } = useTranslation();
+  const styles = getStyles(colors);
+
   const isAdmin = role === 'admin';
 
   const [posts, setPosts] = useState<CommunityPost[]>([]);
@@ -411,28 +417,31 @@ export default function CommunityScreen(): React.JSX.Element {
         isAdmin={isAdmin}
         onFlag={handleFlag}
         onDelete={handleDelete}
+        colors={colors}
       />
     ),
-    [user, isAdmin, handleFlag, handleDelete]
+    [user, isAdmin, handleFlag, handleDelete, colors]
   );
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={COLORS.primary} />
-      <LinearGradient colors={[COLORS.primary, COLORS.primaryDark]} style={styles.header}>
+      <StatusBar barStyle="light-content" backgroundColor={colors.primaryDark} />
+      <LinearGradient colors={[colors.primary, colors.primaryDark]} style={styles.header}>
         <View style={styles.headerRow}>
           <View>
-            <Text style={styles.headerTitle}>Community</Text>
-            <Text style={styles.headerSub}>Share your faith. Inspire others.</Text>
+            <Text style={styles.headerTitle}>{t('community.title')}</Text>
+            <Text style={styles.headerSub}>{t('community.subtitle')}</Text>
           </View>
           <TouchableOpacity style={styles.createBtn} onPress={() => setShowCreate(true)}>
-            <Text style={styles.createBtnText}>+ Create Post</Text>
+            <Text style={styles.createBtnText}>+ {t('community.create.post')}</Text>
           </TouchableOpacity>
         </View>
       </LinearGradient>
 
       {isLoading ? (
-        <View style={styles.centered}><ActivityIndicator size="large" color={COLORS.primary} /></View>
+        <View style={styles.centered}>
+          <ActivityIndicator size="large" color={colors.accent} />
+        </View>
       ) : (
         <FlatList<CommunityPost>
           data={posts}
@@ -441,15 +450,68 @@ export default function CommunityScreen(): React.JSX.Element {
           onEndReached={() => !isLoading && hasMore && fetchPosts(false)}
           onEndReachedThreshold={0.4}
           refreshControl={
-            <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor={COLORS.primary} />
+            <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor={colors.accent} colors={[colors.accent]} />
           }
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.listContent}
+          ListHeaderComponent={
+            /* Inline Post-Creation Card Box Widget */
+            <View style={styles.inlineCreateCard}>
+              <View style={styles.inlineCreateRow}>
+                <View style={styles.inlineAvatar}>
+                  {profile?.avatar_url ? (
+                    <Image source={{ uri: profile.avatar_url }} style={styles.inlineAvatarImg} />
+                  ) : (
+                    <Text style={styles.inlineAvatarPlaceholder}>
+                      {(profile?.full_name ?? user?.email ?? 'U').charAt(0).toUpperCase()}
+                    </Text>
+                  )}
+                </View>
+                <TouchableOpacity
+                  style={styles.inlineInputBox}
+                  activeOpacity={0.8}
+                  onPress={() => setShowCreate(true)}
+                >
+                  <Text style={styles.inlineInputText}>{t('community.create.placeholder')}</Text>
+                </TouchableOpacity>
+              </View>
+              <View style={styles.inlineActionsDivider} />
+              <View style={styles.inlineActionsRow}>
+                <TouchableOpacity
+                  style={styles.inlineActionBtn}
+                  activeOpacity={0.7}
+                  onPress={() => setShowCreate(true)}
+                >
+                  <Ionicons name="image" size={18} color={colors.success} style={{ marginRight: 6 }} />
+                  <Text style={styles.inlineActionBtnText}>{t('community.create.photo')}</Text>
+                </TouchableOpacity>
+                <View style={styles.inlineActionDivider} />
+                <TouchableOpacity
+                  style={styles.inlineActionBtn}
+                  activeOpacity={0.7}
+                  onPress={() => setShowCreate(true)}
+                >
+                  <Ionicons name="videocam" size={18} color={colors.info} style={{ marginRight: 6 }} />
+                  <Text style={styles.inlineActionBtnText}>{t('community.create.video')}</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          }
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
-              <Text style={styles.emptyEmoji}>💬</Text>
-              <Text style={styles.emptyText}>No posts yet.</Text>
-              <Text style={styles.emptySubtext}>Be the first to share your faith!</Text>
+              <View style={styles.emptyIconContainer}>
+                <Ionicons name="chatbubbles-outline" size={48} color={colors.accent} />
+              </View>
+              <Text style={styles.emptyText}>{t('community.empty.title')}</Text>
+              <Text style={styles.emptySubtext}>{t('community.empty.subtitle')}</Text>
+              <TouchableOpacity
+                style={styles.emptyButton}
+                activeOpacity={0.8}
+                onPress={() => setShowCreate(true)}
+              >
+                <Ionicons name="add-circle" size={18} color="#0A0D16" style={{ marginRight: 6 }} />
+                <Text style={styles.emptyButtonText}>{t('community.create.title')}</Text>
+              </TouchableOpacity>
             </View>
           }
         />
@@ -461,60 +523,270 @@ export default function CommunityScreen(): React.JSX.Element {
           onClose={() => setShowCreate(false)}
           onPublished={handleRefresh}
           userId={user.id}
+          colors={colors}
+          t={t}
         />
       )}
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.backgroundPrimary },
-  header: { paddingTop: 48, paddingBottom: SPACING.base },
-  headerRow: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: SPACING.base,
-  },
-  headerTitle: { fontSize: TYPOGRAPHY.fontSize.xl, fontWeight: '800', color: COLORS.white },
-  headerSub: { fontSize: TYPOGRAPHY.fontSize.sm, color: COLORS.accentLight, marginTop: 2 },
-  createBtn: {
-    backgroundColor: COLORS.accent, borderRadius: BORDER_RADIUS.full,
-    paddingHorizontal: SPACING.base, paddingVertical: SPACING.sm,
-  },
-  createBtnText: { color: COLORS.primary, fontWeight: '700', fontSize: TYPOGRAPHY.fontSize.sm },
-  centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  listContent: { paddingBottom: SPACING['4xl'] },
-  postCard: {
-    backgroundColor: COLORS.white, marginHorizontal: SPACING.base,
-    marginBottom: SPACING.base, borderRadius: BORDER_RADIUS.xl, overflow: 'hidden', ...SHADOWS.md,
-  },
-  postHeader: {
-    flexDirection: 'row', alignItems: 'center',
-    padding: SPACING.md, paddingBottom: SPACING.sm,
-  },
-  avatar: {
-    width: 44, height: 44, borderRadius: 22, backgroundColor: COLORS.primary,
-    alignItems: 'center', justifyContent: 'center', marginRight: SPACING.md, overflow: 'hidden',
-  },
-  avatarImg: { width: 44, height: 44 },
-  avatarPlaceholder: { color: COLORS.white, fontWeight: '700', fontSize: TYPOGRAPHY.fontSize.md },
-  authorInfo: { flex: 1 },
-  authorName: { fontSize: TYPOGRAPHY.fontSize.base, fontWeight: '700', color: COLORS.charcoal },
-  postTime: { fontSize: TYPOGRAPHY.fontSize.xs, color: COLORS.midGray, marginTop: 2 },
-  moreBtn: { padding: SPACING.sm },
-  moreBtnText: { fontSize: 18, color: COLORS.midGray, letterSpacing: 2 },
-  caption: {
-    fontSize: TYPOGRAPHY.fontSize.base, color: COLORS.charcoal,
-    paddingHorizontal: SPACING.md, paddingBottom: SPACING.md,
-    lineHeight: TYPOGRAPHY.fontSize.base * 1.6,
-  },
-  postImage: { width: '100%', height: 220 },
-  flagBanner: {
-    backgroundColor: '#FFF8E1', paddingHorizontal: SPACING.base, paddingVertical: SPACING.sm,
-    borderTopWidth: 1, borderTopColor: '#FFD54F',
-  },
-  flagText: { fontSize: TYPOGRAPHY.fontSize.xs, color: '#F59E0B', fontWeight: '600' },
-  emptyContainer: { alignItems: 'center', paddingTop: SPACING['5xl'], paddingHorizontal: SPACING['2xl'] },
-  emptyEmoji: { fontSize: 48, marginBottom: SPACING.md },
-  emptyText: { fontSize: TYPOGRAPHY.fontSize.lg, fontWeight: '700', color: COLORS.charcoal, marginBottom: SPACING.sm },
-  emptySubtext: { fontSize: TYPOGRAPHY.fontSize.base, color: COLORS.midGray, textAlign: 'center' },
-});
+// -----------------------------------------------------------------------
+// Styles
+// -----------------------------------------------------------------------
+const getCardStyles = (colors: any) =>
+  StyleSheet.create({
+    postCard: {
+      backgroundColor: colors.backgroundCard,
+      marginHorizontal: SPACING.base,
+      marginBottom: SPACING.base,
+      borderRadius: BORDER_RADIUS.xl,
+      overflow: 'hidden',
+      borderWidth: 1,
+      borderColor: colors.lightGray,
+      ...SHADOWS.md,
+    },
+    postHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      padding: SPACING.md,
+      paddingBottom: SPACING.sm,
+    },
+    avatar: {
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      backgroundColor: colors.primary,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginRight: SPACING.md,
+      overflow: 'hidden',
+    },
+    avatarImg: { width: 44, height: 44 },
+    avatarPlaceholder: { color: '#FFFFFF', fontWeight: '700', fontSize: TYPOGRAPHY.fontSize.md },
+    authorInfo: { flex: 1 },
+    authorName: { fontSize: TYPOGRAPHY.fontSize.base, fontWeight: '700', color: colors.charcoal },
+    postTime: { fontSize: TYPOGRAPHY.fontSize.xs, color: colors.midGray, marginTop: 2 },
+    moreBtn: { padding: SPACING.sm },
+    caption: {
+      fontSize: TYPOGRAPHY.fontSize.base,
+      color: colors.charcoal,
+      paddingHorizontal: SPACING.md,
+      paddingBottom: SPACING.md,
+      lineHeight: TYPOGRAPHY.fontSize.base * 1.6,
+    },
+    postImage: { width: '100%', height: 220 },
+    flagBanner: {
+      backgroundColor: colors.theme === 'dark' ? '#2C1E0A' : '#FFF8E1',
+      paddingHorizontal: SPACING.base,
+      paddingVertical: SPACING.sm,
+      borderTopWidth: 1,
+      borderTopColor: '#FFD54F',
+      flexDirection: 'row',
+      alignItems: 'center',
+    },
+    flagText: { fontSize: TYPOGRAPHY.fontSize.xs, color: '#F59E0B', fontWeight: '600' },
+  });
+
+const getCreateStyles = (colors: any) =>
+  StyleSheet.create({
+    container: { flex: 1, backgroundColor: colors.backgroundCard },
+    header: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingTop: 52,
+      paddingHorizontal: SPACING.base,
+      paddingBottom: SPACING.md,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.lightGray,
+    },
+    cancelText: { color: colors.darkGray, fontSize: TYPOGRAPHY.fontSize.base },
+    title: { fontSize: TYPOGRAPHY.fontSize.md, fontWeight: '700', color: colors.charcoal },
+    postBtn: { color: colors.accent, fontSize: TYPOGRAPHY.fontSize.base, fontWeight: '700' },
+    body: { padding: SPACING.base },
+    captionInput: {
+      fontSize: TYPOGRAPHY.fontSize.base,
+      color: colors.charcoal,
+      minHeight: 120,
+      textAlignVertical: 'top',
+    },
+    charCount: {
+      fontSize: TYPOGRAPHY.fontSize.xs,
+      color: colors.midGray,
+      textAlign: 'right',
+      marginBottom: SPACING.base,
+    },
+    photoBtn: {
+      borderWidth: 2,
+      borderColor: colors.lightGray,
+      borderStyle: 'dashed',
+      borderRadius: BORDER_RADIUS.lg,
+      padding: SPACING['2xl'],
+      alignItems: 'center',
+      marginBottom: SPACING.base,
+    },
+    photoBtnText: { color: colors.midGray, fontSize: TYPOGRAPHY.fontSize.base },
+    previewContainer: { position: 'relative', marginBottom: SPACING.base },
+    preview: { width: '100%', height: 200, borderRadius: BORDER_RADIUS.lg },
+    removeImg: {
+      position: 'absolute',
+      top: 8,
+      right: 8,
+      width: 28,
+      height: 28,
+      borderRadius: 14,
+      backgroundColor: 'rgba(0,0,0,0.6)',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    sizeError: { color: colors.error, fontSize: TYPOGRAPHY.fontSize.sm, textAlign: 'center' },
+  });
+
+const getStyles = (colors: any) =>
+  StyleSheet.create({
+    container: { flex: 1, backgroundColor: colors.backgroundPrimary },
+    header: { paddingTop: 48, paddingBottom: SPACING.base },
+    headerRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: SPACING.base,
+    },
+    headerTitle: { fontSize: TYPOGRAPHY.fontSize.xl, fontWeight: '800', color: '#FFFFFF' },
+    headerSub: { fontSize: TYPOGRAPHY.fontSize.sm, color: colors.accentLight, marginTop: 2 },
+    createBtn: {
+      backgroundColor: colors.accent,
+      borderRadius: BORDER_RADIUS.full,
+      paddingHorizontal: SPACING.base,
+      paddingVertical: SPACING.sm,
+    },
+    createBtnText: { color: '#0A0D16', fontWeight: '700', fontSize: TYPOGRAPHY.fontSize.sm },
+    centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+    listContent: { paddingBottom: SPACING['4xl'] },
+
+    /* Inline Create Widget */
+    inlineCreateCard: {
+      backgroundColor: colors.backgroundCard,
+      marginHorizontal: SPACING.base,
+      marginTop: SPACING.base,
+      marginBottom: SPACING.md,
+      borderRadius: BORDER_RADIUS.xl,
+      borderWidth: 1,
+      borderColor: colors.lightGray,
+      padding: SPACING.md,
+      ...SHADOWS.sm,
+    },
+    inlineCreateRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+    },
+    inlineAvatar: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      backgroundColor: colors.primary,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginRight: SPACING.md,
+      overflow: 'hidden',
+    },
+    inlineAvatarImg: {
+      width: 40,
+      height: 40,
+    },
+    inlineAvatarPlaceholder: {
+      color: '#FFFFFF',
+      fontWeight: '700',
+      fontSize: TYPOGRAPHY.fontSize.sm,
+    },
+    inlineInputBox: {
+      flex: 1,
+      height: 40,
+      borderRadius: BORDER_RADIUS.full,
+      backgroundColor: colors.backgroundPrimary,
+      borderWidth: 1,
+      borderColor: colors.lightGray,
+      justifyContent: 'center',
+      paddingHorizontal: SPACING.lg,
+    },
+    inlineInputText: {
+      color: colors.midGray,
+      fontSize: TYPOGRAPHY.fontSize.sm,
+    },
+    inlineActionsDivider: {
+      height: 1,
+      backgroundColor: colors.lightGray,
+      marginVertical: SPACING.md,
+    },
+    inlineActionsRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+    },
+    inlineActionBtn: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: 4,
+    },
+    inlineActionBtnText: {
+      color: colors.darkGray,
+      fontWeight: '600',
+      fontSize: TYPOGRAPHY.fontSize.sm,
+    },
+    inlineActionDivider: {
+      width: 1,
+      height: 20,
+      backgroundColor: colors.lightGray,
+    },
+
+    emptyContainer: {
+      alignItems: 'center',
+      paddingTop: SPACING['5xl'],
+      paddingHorizontal: SPACING['2xl'],
+    },
+    emptyIconContainer: {
+      width: 90,
+      height: 90,
+      borderRadius: 45,
+      backgroundColor: colors.backgroundCard,
+      borderWidth: 1,
+      borderColor: colors.lightGray,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginBottom: SPACING.lg,
+      elevation: 2,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.05,
+      shadowRadius: 4,
+    },
+    emptyText: {
+      fontSize: TYPOGRAPHY.fontSize.lg,
+      fontWeight: '700',
+      color: colors.charcoal,
+      marginBottom: SPACING.xs,
+    },
+    emptySubtext: {
+      fontSize: TYPOGRAPHY.fontSize.base,
+      color: colors.midGray,
+      textAlign: 'center',
+      lineHeight: 22,
+      marginBottom: SPACING.xl,
+    },
+    emptyButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: colors.accent,
+      paddingHorizontal: SPACING.xl,
+      paddingVertical: SPACING.md,
+      borderRadius: BORDER_RADIUS.full,
+      ...SHADOWS.sm,
+    },
+    emptyButtonText: {
+      color: '#0A0D16',
+      fontWeight: '700',
+      fontSize: TYPOGRAPHY.fontSize.base,
+    },
+  });

@@ -2,7 +2,7 @@
 // TOO HUMBLE - DESIGN TOKENS & CONSTANTS
 // =============================================================================
 
-export const COLORS = {
+export const LIGHT_COLORS = {
   // Brand
   primary: '#1A2B5E',      // Deep navy blue
   primaryLight: '#2C4A9E', // Lighter navy
@@ -35,6 +35,43 @@ export const COLORS = {
   backgroundSecondary: '#ECEEF5',
   backgroundCard: '#FFFFFF',
 } as const;
+
+export const DARK_COLORS = {
+  // Brand
+  primary: '#0E1B3D',      // Darker navy blue for headers
+  primaryLight: '#1A2B5E', // Navy
+  primaryDark: '#070E20',  // Deep black-navy
+  accent: '#F0A500',       // Gold/amber
+  accentLight: '#FFD166',  // Light gold
+
+  // Neutrals
+  white: '#1E2538',        // Dark grey-blue for cards
+  offWhite: '#0F1322',     // Very dark background
+  lightGray: '#2C354E',    // Dark border/grey
+  midGray: '#6C7A9C',
+  darkGray: '#A2AFCC',     // Light grey for secondary text
+  charcoal: '#F0F3FA',     // Near white for title text
+  black: '#FFFFFF',
+
+  // Semantic
+  success: '#22C55E',
+  warning: '#F59E0B',
+  error: '#EF4444',
+  info: '#3B82F6',
+
+  // Overlay
+  overlayDark: 'rgba(7,14,32,0.85)',
+  overlayLight: 'rgba(255,255,255,0.06)',
+  glassMorph: 'rgba(0,0,0,0.4)',
+
+  // Backgrounds
+  backgroundPrimary: '#0F1322',
+  backgroundSecondary: '#151B2F',
+  backgroundCard: '#1E2538',
+} as const;
+
+export const COLORS = LIGHT_COLORS;
+
 
 export const TYPOGRAPHY = {
   fontFamily: {
@@ -122,7 +159,7 @@ export const STORAGE_BUCKETS = {
 } as const;
 
 // Community post limits
-export const MAX_IMAGE_SIZE_KB = 5120; // 5 MB
+export const MAX_IMAGE_SIZE_KB = 7168; // 7 MB
 export const MAX_IMAGE_SIZE_BYTES = MAX_IMAGE_SIZE_KB * 1024;
 export const MAX_CAPTION_LENGTH = 500;
 

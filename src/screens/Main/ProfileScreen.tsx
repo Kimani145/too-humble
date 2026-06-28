@@ -1,18 +1,31 @@
 // =============================================================================
-// TOO HUMBLE - PROFILE SCREEN (PROMPT 9)
+// TOO HUMBLE - PROFILE SCREEN
 // Theme switching, language, password update, account switching, YouTube parser
+// Supports dynamic theme toggling, translation, and vector icons.
 // =============================================================================
 
 import React, { useState, useCallback } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, Alert,
-  ScrollView, StatusBar, Image, TextInput, ActivityIndicator, Switch,
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  Alert,
+  ScrollView,
+  StatusBar,
+  Image,
+  TextInput,
+  ActivityIndicator,
+  Switch,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
 import { supabase, uploadToStorage } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
+import { useTheme } from '../../context/ThemeContext';
+import { useTranslation, Language } from '../../context/LanguageContext';
 import { COLORS, TYPOGRAPHY, SPACING, BORDER_RADIUS, SHADOWS, STORAGE_BUCKETS } from '../../constants/theme';
 
 // -----------------------------------------------------------------------
@@ -41,23 +54,45 @@ export function getYouTubeEmbedUrl(videoId: string): string {
 // Section row component
 // -----------------------------------------------------------------------
 interface SectionRowProps {
-  icon: string;
+  icon: keyof typeof Ionicons.glyphMap;
   label: string;
   value?: string;
   onPress?: () => void;
   rightElement?: React.ReactNode;
   danger?: boolean;
+  colors: any;
 }
 
-function SectionRow({ icon, label, value, onPress, rightElement, danger }: SectionRowProps): React.JSX.Element {
+function SectionRow({
+  icon,
+  label,
+  value,
+  onPress,
+  rightElement,
+  danger,
+  colors,
+}: SectionRowProps): React.JSX.Element {
+  const styles = getRowStyles(colors);
   return (
-    <TouchableOpacity style={styles.sectionRow} onPress={onPress} activeOpacity={onPress ? 0.7 : 1} disabled={!onPress}>
-      <Text style={styles.rowIcon}>{icon}</Text>
+    <TouchableOpacity
+      style={styles.sectionRow}
+      onPress={onPress}
+      activeOpacity={onPress ? 0.7 : 1}
+      disabled={!onPress}
+    >
+      <Ionicons
+        name={icon}
+        size={20}
+        color={danger ? colors.error : colors.accent}
+        style={styles.rowIcon}
+      />
       <View style={styles.rowContent}>
-        <Text style={[styles.rowLabel, danger ? { color: COLORS.error } : null]}>{label}</Text>
+        <Text style={[styles.rowLabel, danger ? { color: colors.error } : { color: colors.charcoal }]}>
+          {label}
+        </Text>
         {value ? <Text style={styles.rowValue}>{value}</Text> : null}
       </View>
-      {rightElement ?? (onPress ? <Text style={styles.rowChevron}>›</Text> : null)}
+      {rightElement ?? (onPress ? <Ionicons name="chevron-forward" size={16} color={colors.midGray} /> : null)}
     </TouchableOpacity>
   );
 }
@@ -67,10 +102,11 @@ function SectionRow({ icon, label, value, onPress, rightElement, danger }: Secti
 // -----------------------------------------------------------------------
 export default function ProfileScreen(): React.JSX.Element {
   const router = useRouter();
-  const { user, profile, logout, updateProfile, refreshProfile } = useAuth();
+  const { user, profile, logout, updateProfile, refreshProfile, role } = useAuth();
+  const { colors, isDarkMode, toggleTheme } = useTheme();
+  const { t, language, setLanguage } = useTranslation();
+  const styles = getStyles(colors);
 
-  const [isDarkMode, setIsDarkMode] = useState(false);
-  const [language, setLanguage] = useState('English');
   const [isUpdatingAvatar, setIsUpdatingAvatar] = useState(false);
 
   // Password update state
@@ -80,22 +116,30 @@ export default function ProfileScreen(): React.JSX.Element {
   const [confirmPwd, setConfirmPwd] = useState('');
   const [isPwdUpdating, setIsPwdUpdating] = useState(false);
 
+  const isAdmin = role === 'admin';
+
   // ----------------------------------------------------------------
   // Avatar update
   // ----------------------------------------------------------------
   const handleUpdateAvatar = useCallback(async (): Promise<void> => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') { Alert.alert('Permission Required', 'Photo access needed.'); return; }
+    if (status !== 'granted') {
+      Alert.alert('Permission Required', 'Photo access needed.');
+      return;
+    }
 
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.7, allowsEditing: true, aspect: [1, 1],
+      quality: 0.7,
+      allowsEditing: true,
+      aspect: [1, 1],
     });
     if (result.canceled || !result.assets[0]) return;
 
     const asset = result.assets[0];
     if ((asset.fileSize ?? 0) > 2 * 1024 * 1024) {
-      Alert.alert('Image Too Large', 'Avatar must be under 2 MB.'); return;
+      Alert.alert('Image Too Large', 'Avatar must be under 2 MB.');
+      return;
     }
 
     setIsUpdatingAvatar(true);
@@ -118,8 +162,14 @@ export default function ProfileScreen(): React.JSX.Element {
   // Password update
   // ----------------------------------------------------------------
   const handlePasswordUpdate = useCallback(async (): Promise<void> => {
-    if (!newPwd || newPwd.length < 8) { Alert.alert('Weak Password', 'Min 8 characters required.'); return; }
-    if (newPwd !== confirmPwd) { Alert.alert('Mismatch', 'Passwords do not match.'); return; }
+    if (!newPwd || newPwd.length < 8) {
+      Alert.alert('Weak Password', 'Min 8 characters required.');
+      return;
+    }
+    if (newPwd !== confirmPwd) {
+      Alert.alert('Mismatch', 'Passwords do not match.');
+      return;
+    }
 
     setIsPwdUpdating(true);
     try {
@@ -127,7 +177,9 @@ export default function ProfileScreen(): React.JSX.Element {
       if (error) throw error;
       Alert.alert('Password Updated ✅', 'Your password has been changed successfully.');
       setShowPasswordModal(false);
-      setCurrentPwd(''); setNewPwd(''); setConfirmPwd('');
+      setCurrentPwd('');
+      setNewPwd('');
+      setConfirmPwd('');
     } catch (err: unknown) {
       Alert.alert('Update Failed', err instanceof Error ? err.message : 'Try again.');
     } finally {
@@ -142,37 +194,41 @@ export default function ProfileScreen(): React.JSX.Element {
     Alert.alert('Log Out', 'Are you sure you want to log out?', [
       { text: 'Cancel', style: 'cancel' },
       {
-        text: 'Log Out', style: 'destructive',
-        onPress: async () => { await logout(); router.replace('/auth/login'); },
+        text: 'Log Out',
+        style: 'destructive',
+        onPress: async () => {
+          await logout();
+          router.replace('/auth/login');
+        },
       },
     ]);
   }, [logout, router]);
 
   // ----------------------------------------------------------------
-  // Language toggle (localization placeholder — extend with i18n)
+  // Language toggle
   // ----------------------------------------------------------------
   const handleLanguageToggle = useCallback((): void => {
-    const langs = ['English', 'Swahili', 'French'];
+    const langs: Language[] = ['English', 'Swahili', 'French'];
     const currentIdx = langs.indexOf(language);
-    setLanguage(langs[(currentIdx + 1) % langs.length]);
-    Alert.alert('Language Updated', `App language set to ${langs[(currentIdx + 1) % langs.length]}.`);
-  }, [language]);
+    const nextLang = langs[(currentIdx + 1) % langs.length];
+    setLanguage(nextLang);
+    Alert.alert('Language Updated', `App language set to ${nextLang}.`);
+  }, [language, setLanguage]);
 
   // ----------------------------------------------------------------
-  // Account switch (navigate to login for alternate account)
+  // Account switch
   // ----------------------------------------------------------------
   const handleAccountSwitch = useCallback((): void => {
-    Alert.alert(
-      'Switch Account',
-      'You will be signed out of the current account.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Switch',
-          onPress: async () => { await logout(); router.replace('/auth/login'); },
+    Alert.alert('Switch Account', 'You will be signed out of the current account.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Switch',
+        onPress: async () => {
+          await logout();
+          router.replace('/auth/login');
         },
-      ]
-    );
+      },
+    ]);
   }, [logout, router]);
 
   // ----------------------------------------------------------------
@@ -183,84 +239,140 @@ export default function ProfileScreen(): React.JSX.Element {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={COLORS.primary} />
-      <LinearGradient colors={[COLORS.primary, COLORS.primaryDark]} style={styles.header}>
+      <StatusBar barStyle="light-content" backgroundColor={colors.primaryDark} />
+      <LinearGradient colors={[colors.primary, colors.primaryDark]} style={styles.header}>
         {/* Avatar */}
-        <TouchableOpacity onPress={handleUpdateAvatar} disabled={isUpdatingAvatar} style={styles.avatarContainer}>
+        <TouchableOpacity
+          onPress={handleUpdateAvatar}
+          disabled={isUpdatingAvatar}
+          style={styles.avatarContainer}
+        >
           {isUpdatingAvatar ? (
-            <ActivityIndicator color={COLORS.white} />
+            <ActivityIndicator color="#FFFFFF" />
           ) : avatarUrl ? (
             <Image source={{ uri: avatarUrl }} style={styles.avatar} />
           ) : (
             <Text style={styles.avatarPlaceholder}>{displayName.charAt(0).toUpperCase()}</Text>
           )}
-          <View style={styles.avatarEditBadge}><Text style={styles.avatarEditIcon}>✏️</Text></View>
+          <View style={styles.avatarEditBadge}>
+            <Ionicons name="pencil" size={12} color="#0A0D16" />
+          </View>
         </TouchableOpacity>
 
         <Text style={styles.profileName}>{displayName}</Text>
         <Text style={styles.profileEmail}>{user?.email}</Text>
-        <View style={styles.roleBadge}>
-          <Text style={styles.roleBadgeText}>{profile?.role?.toUpperCase() ?? 'CLIENT'}</Text>
-        </View>
+
+        {/* ONLY Render Role Badge if Admin user (removes 'CLIENT' badge) */}
+        {isAdmin && (
+          <View style={styles.roleBadge}>
+            <Text style={styles.roleBadgeText}>ADMIN</Text>
+          </View>
+        )}
       </LinearGradient>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
+        {/* Admin Section — Exposes Admin Dashboard link */}
+        {isAdmin && (
+          <>
+            <Text style={styles.sectionTitle}>{t('profile.admin_dashboard')}</Text>
+            <View style={styles.card}>
+              <SectionRow
+                icon="settings-outline"
+                label={t('profile.admin_dashboard')}
+                onPress={() => router.push('/(admin)/dashboard' as any)}
+                colors={colors}
+              />
+            </View>
+          </>
+        )}
 
         {/* Account */}
-        <Text style={styles.sectionTitle}>Account</Text>
+        <Text style={styles.sectionTitle}>{t('profile.account')}</Text>
         <View style={styles.card}>
           <SectionRow
-            icon="🔒" label="Update Password"
+            icon="key-outline"
+            label={t('profile.update_pwd')}
             onPress={() => setShowPasswordModal(true)}
+            colors={colors}
           />
           <View style={styles.divider} />
           <SectionRow
-            icon="🔗" label="Facebook Link"
+            icon="logo-facebook"
+            label={t('profile.fb_link')}
             value={profile?.fb_link ?? 'Not set'}
             onPress={() => router.push('/profile/edit-social' as any)}
+            colors={colors}
           />
           <View style={styles.divider} />
           <SectionRow
-            icon="🔄" label="Switch Account"
+            icon="swap-horizontal-outline"
+            label={t('profile.switch_account')}
             onPress={handleAccountSwitch}
+            colors={colors}
           />
         </View>
 
         {/* Preferences */}
-        <Text style={styles.sectionTitle}>Preferences</Text>
+        <Text style={styles.sectionTitle}>{t('profile.preferences')}</Text>
         <View style={styles.card}>
           <SectionRow
-            icon="🌙" label="Dark Mode"
+            icon="moon-outline"
+            label={t('profile.dark_mode')}
             rightElement={
               <Switch
                 value={isDarkMode}
-                onValueChange={setIsDarkMode}
-                trackColor={{ false: COLORS.lightGray, true: COLORS.primary }}
+                onValueChange={toggleTheme}
+                trackColor={{ false: colors.lightGray, true: colors.accent }}
+                thumbColor={isDarkMode ? colors.white : '#FFFFFF'}
               />
             }
+            colors={colors}
           />
           <View style={styles.divider} />
           <SectionRow
-            icon="🌍" label="Language"
+            icon="globe-outline"
+            label={t('profile.language')}
             value={language}
             onPress={handleLanguageToggle}
+            colors={colors}
           />
         </View>
 
         {/* Activity */}
-        <Text style={styles.sectionTitle}>My Activity</Text>
+        <Text style={styles.sectionTitle}>{t('profile.activity')}</Text>
         <View style={styles.card}>
-          <SectionRow icon="💳" label="Giving History" onPress={() => router.push('/profile/monetization')} />
+          <SectionRow
+            icon="cash-outline"
+            label={t('profile.giving_history')}
+            onPress={() => router.push('/profile/monetization')}
+            colors={colors}
+          />
           <View style={styles.divider} />
-          <SectionRow icon="🔔" label="Notifications" onPress={() => router.push('/(tabs)/notifications')} />
+          <SectionRow
+            icon="notifications-outline"
+            label={t('profile.notifications')}
+            onPress={() => router.push('/(tabs)/notifications')}
+            colors={colors}
+          />
           <View style={styles.divider} />
-          <SectionRow icon="⭐" label="Saved Posts" onPress={() => router.push('/profile/saved' as any)} />
+          <SectionRow
+            icon="bookmark-outline"
+            label={t('profile.saved_posts')}
+            onPress={() => router.push('/profile/saved' as any)}
+            colors={colors}
+          />
         </View>
 
         {/* Danger zone */}
-        <Text style={styles.sectionTitle}>Session</Text>
+        <Text style={styles.sectionTitle}>{t('profile.session')}</Text>
         <View style={styles.card}>
-          <SectionRow icon="🚪" label="Log Out" onPress={handleLogout} danger />
+          <SectionRow
+            icon="log-out-outline"
+            label={t('profile.logout')}
+            onPress={handleLogout}
+            danger
+            colors={colors}
+          />
         </View>
       </ScrollView>
 
@@ -268,25 +380,45 @@ export default function ProfileScreen(): React.JSX.Element {
       {showPasswordModal && (
         <View style={styles.modalOverlay}>
           <View style={styles.modalSheet}>
-            <Text style={styles.modalTitle}>Update Password</Text>
+            <Text style={styles.modalTitle}>{t('profile.update_pwd')}</Text>
             <TextInput
-              style={styles.modalInput} value={currentPwd} onChangeText={setCurrentPwd}
-              placeholder="Current password" placeholderTextColor={COLORS.midGray} secureTextEntry
+              style={styles.modalInput}
+              value={currentPwd}
+              onChangeText={setCurrentPwd}
+              placeholder="Current password"
+              placeholderTextColor={colors.midGray}
+              secureTextEntry
             />
             <TextInput
-              style={styles.modalInput} value={newPwd} onChangeText={setNewPwd}
-              placeholder="New password (min 8 chars)" placeholderTextColor={COLORS.midGray} secureTextEntry
+              style={styles.modalInput}
+              value={newPwd}
+              onChangeText={setNewPwd}
+              placeholder="New password (min 8 chars)"
+              placeholderTextColor={colors.midGray}
+              secureTextEntry
             />
             <TextInput
-              style={styles.modalInput} value={confirmPwd} onChangeText={setConfirmPwd}
-              placeholder="Confirm new password" placeholderTextColor={COLORS.midGray} secureTextEntry
+              style={styles.modalInput}
+              value={confirmPwd}
+              onChangeText={setConfirmPwd}
+              placeholder="Confirm new password"
+              placeholderTextColor={colors.midGray}
+              secureTextEntry
             />
             <View style={styles.modalActions}>
               <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setShowPasswordModal(false)}>
                 <Text style={styles.modalCancelText}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.modalSaveBtn} onPress={handlePasswordUpdate} disabled={isPwdUpdating}>
-                {isPwdUpdating ? <ActivityIndicator color={COLORS.white} /> : <Text style={styles.modalSaveText}>Update</Text>}
+              <TouchableOpacity
+                style={styles.modalSaveBtn}
+                onPress={handlePasswordUpdate}
+                disabled={isPwdUpdating}
+              >
+                {isPwdUpdating ? (
+                  <ActivityIndicator color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.modalSaveText}>Update</Text>
+                )}
               </TouchableOpacity>
             </View>
           </View>
@@ -296,65 +428,125 @@ export default function ProfileScreen(): React.JSX.Element {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.backgroundPrimary },
-  header: { paddingTop: 52, paddingBottom: SPACING['2xl'], alignItems: 'center' },
-  avatarContainer: {
-    width: 88, height: 88, borderRadius: 44, backgroundColor: COLORS.overlayLight,
-    alignItems: 'center', justifyContent: 'center', marginBottom: SPACING.md,
-    borderWidth: 3, borderColor: COLORS.accent, overflow: 'hidden',
-  },
-  avatar: { width: 88, height: 88 },
-  avatarPlaceholder: { fontSize: TYPOGRAPHY.fontSize['3xl'], fontWeight: '800', color: COLORS.white },
-  avatarEditBadge: {
-    position: 'absolute', bottom: 0, right: 0, width: 26, height: 26, borderRadius: 13,
-    backgroundColor: COLORS.accent, alignItems: 'center', justifyContent: 'center',
-  },
-  avatarEditIcon: { fontSize: 12 },
-  profileName: { fontSize: TYPOGRAPHY.fontSize.xl, fontWeight: '800', color: COLORS.white },
-  profileEmail: { fontSize: TYPOGRAPHY.fontSize.sm, color: 'rgba(255,255,255,0.7)', marginTop: 4 },
-  roleBadge: {
-    backgroundColor: COLORS.accent, borderRadius: BORDER_RADIUS.full,
-    paddingHorizontal: SPACING.md, paddingVertical: 4, marginTop: SPACING.sm,
-  },
-  roleBadgeText: { fontSize: TYPOGRAPHY.fontSize.xs, fontWeight: '800', color: COLORS.primary, letterSpacing: 1 },
-  content: { padding: SPACING.base, paddingBottom: SPACING['5xl'] },
-  sectionTitle: {
-    fontSize: TYPOGRAPHY.fontSize.sm, fontWeight: '700', color: COLORS.midGray,
-    textTransform: 'uppercase', letterSpacing: 1, marginTop: SPACING.xl, marginBottom: SPACING.sm,
-    paddingHorizontal: SPACING.xs,
-  },
-  card: { backgroundColor: COLORS.white, borderRadius: BORDER_RADIUS.xl, overflow: 'hidden', ...SHADOWS.sm },
-  sectionRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: SPACING.base, paddingVertical: SPACING.md },
-  rowIcon: { fontSize: 22, marginRight: SPACING.md, width: 30, textAlign: 'center' },
-  rowContent: { flex: 1 },
-  rowLabel: { fontSize: TYPOGRAPHY.fontSize.base, fontWeight: '600', color: COLORS.charcoal },
-  rowValue: { fontSize: TYPOGRAPHY.fontSize.sm, color: COLORS.midGray, marginTop: 2 },
-  rowChevron: { fontSize: 22, color: COLORS.midGray },
-  divider: { height: 1, backgroundColor: COLORS.lightGray, marginLeft: 58 },
-  modalOverlay: {
-    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-    backgroundColor: COLORS.overlayDark, justifyContent: 'flex-end',
-  },
-  modalSheet: {
-    backgroundColor: COLORS.white, borderTopLeftRadius: BORDER_RADIUS.xl,
-    borderTopRightRadius: BORDER_RADIUS.xl, padding: SPACING['2xl'], paddingBottom: 40,
-  },
-  modalTitle: { fontSize: TYPOGRAPHY.fontSize.lg, fontWeight: '700', color: COLORS.charcoal, marginBottom: SPACING.xl },
-  modalInput: {
-    backgroundColor: COLORS.offWhite, borderWidth: 1.5, borderColor: COLORS.lightGray,
-    borderRadius: BORDER_RADIUS.md, padding: SPACING.base, marginBottom: SPACING.md,
-    fontSize: TYPOGRAPHY.fontSize.base, color: COLORS.charcoal,
-  },
-  modalActions: { flexDirection: 'row', gap: SPACING.md, marginTop: SPACING.md },
-  modalCancelBtn: {
-    flex: 1, borderWidth: 1.5, borderColor: COLORS.lightGray, borderRadius: BORDER_RADIUS.md,
-    paddingVertical: SPACING.md, alignItems: 'center',
-  },
-  modalCancelText: { color: COLORS.darkGray, fontWeight: '600' },
-  modalSaveBtn: {
-    flex: 1, backgroundColor: COLORS.primary, borderRadius: BORDER_RADIUS.md,
-    paddingVertical: SPACING.md, alignItems: 'center',
-  },
-  modalSaveText: { color: COLORS.white, fontWeight: '700' },
-});
+// -----------------------------------------------------------------------
+// Styles
+// -----------------------------------------------------------------------
+const getRowStyles = (colors: any) =>
+  StyleSheet.create({
+    sectionRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: SPACING.base,
+      paddingVertical: SPACING.md,
+    },
+    rowIcon: { marginRight: SPACING.md, width: 24, textAlign: 'center' },
+    rowContent: { flex: 1 },
+    rowLabel: { fontSize: TYPOGRAPHY.fontSize.base, fontWeight: '600' },
+    rowValue: { fontSize: TYPOGRAPHY.fontSize.sm, color: colors.midGray, marginTop: 2 },
+  });
+
+const getStyles = (colors: any) =>
+  StyleSheet.create({
+    container: { flex: 1, backgroundColor: colors.backgroundPrimary },
+    header: { paddingTop: 52, paddingBottom: SPACING['2xl'], alignItems: 'center' },
+    avatarContainer: {
+      width: 88,
+      height: 88,
+      borderRadius: 44,
+      backgroundColor: colors.overlayLight,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginBottom: SPACING.md,
+      borderWidth: 3,
+      borderColor: colors.accent,
+      overflow: 'hidden',
+    },
+    avatar: { width: 88, height: 88 },
+    avatarPlaceholder: { fontSize: TYPOGRAPHY.fontSize['3xl'], fontWeight: '800', color: '#FFFFFF' },
+    avatarEditBadge: {
+      position: 'absolute',
+      bottom: 0,
+      right: 0,
+      width: 26,
+      height: 26,
+      borderRadius: 13,
+      backgroundColor: colors.accent,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    profileName: { fontSize: TYPOGRAPHY.fontSize.xl, fontWeight: '800', color: '#FFFFFF' },
+    profileEmail: { fontSize: TYPOGRAPHY.fontSize.sm, color: 'rgba(255,255,255,0.7)', marginTop: 4 },
+    roleBadge: {
+      backgroundColor: colors.accent,
+      borderRadius: BORDER_RADIUS.full,
+      paddingHorizontal: SPACING.md,
+      paddingVertical: 4,
+      marginTop: SPACING.sm,
+    },
+    roleBadgeText: { fontSize: TYPOGRAPHY.fontSize.xs, fontWeight: '800', color: '#0A0D16', letterSpacing: 1 },
+    content: { padding: SPACING.base, paddingBottom: SPACING['5xl'] },
+    sectionTitle: {
+      fontSize: TYPOGRAPHY.fontSize.sm,
+      fontWeight: '700',
+      color: colors.midGray,
+      textTransform: 'uppercase',
+      letterSpacing: 1,
+      marginTop: SPACING.xl,
+      marginBottom: SPACING.sm,
+      paddingHorizontal: SPACING.xs,
+    },
+    card: {
+      backgroundColor: colors.backgroundCard,
+      borderRadius: BORDER_RADIUS.xl,
+      overflow: 'hidden',
+      borderWidth: 1,
+      borderColor: colors.lightGray,
+      ...SHADOWS.sm,
+    },
+    divider: { height: 1, backgroundColor: colors.lightGray, marginLeft: 58 },
+    modalOverlay: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: colors.overlayDark,
+      justifyContent: 'flex-end',
+    },
+    modalSheet: {
+      backgroundColor: colors.backgroundCard,
+      borderTopLeftRadius: BORDER_RADIUS.xl,
+      borderTopRightRadius: BORDER_RADIUS.xl,
+      padding: SPACING['2xl'],
+      paddingBottom: 40,
+    },
+    modalTitle: { fontSize: TYPOGRAPHY.fontSize.lg, fontWeight: '700', color: colors.charcoal, marginBottom: SPACING.xl },
+    modalInput: {
+      backgroundColor: colors.backgroundPrimary,
+      borderWidth: 1.5,
+      borderColor: colors.lightGray,
+      borderRadius: BORDER_RADIUS.md,
+      padding: SPACING.base,
+      marginBottom: SPACING.md,
+      fontSize: TYPOGRAPHY.fontSize.base,
+      color: colors.charcoal,
+    },
+    modalActions: { flexDirection: 'row', gap: SPACING.md, marginTop: SPACING.md },
+    modalCancelBtn: {
+      flex: 1,
+      borderWidth: 1.5,
+      borderColor: colors.lightGray,
+      borderRadius: BORDER_RADIUS.md,
+      paddingVertical: SPACING.md,
+      alignItems: 'center',
+    },
+    modalCancelText: { color: colors.darkGray, fontWeight: '600' },
+    modalSaveBtn: {
+      flex: 1,
+      backgroundColor: colors.accent,
+      borderRadius: BORDER_RADIUS.md,
+      paddingVertical: SPACING.md,
+      alignItems: 'center',
+    },
+    modalSaveText: { color: '#0A0D16', fontWeight: '700' },
+  });

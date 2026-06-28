@@ -8,6 +8,8 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
 import { AuthProvider, useAuth } from '../src/context/AuthContext';
+import { ThemeProvider } from '../src/context/ThemeContext';
+import { LanguageProvider } from '../src/context/LanguageContext';
 import LoadingScreen from '../src/screens/Auth/LoadingScreen';
 
 // Keep splash visible during bootstrap
@@ -43,7 +45,12 @@ function RootNavigator(): React.JSX.Element {
 export default function RootLayout(): React.JSX.Element {
   return (
     <AuthProvider>
-      <RootNavigator />
+      <ThemeProvider>
+        <LanguageProvider>
+          <RootNavigator />
+        </LanguageProvider>
+      </ThemeProvider>
     </AuthProvider>
   );
 }
+
