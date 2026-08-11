@@ -18,8 +18,8 @@ import {
   ScrollView,
   TouchableOpacity,
   Image,
+  Platform,
   RefreshControl,
-  ActivityIndicator,
   StatusBar,
   Dimensions,
   Share,
@@ -33,8 +33,14 @@ import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import { useTranslation } from '../../context/LanguageContext';
 import { HomeFeedPost, PostReaction, SavedPost } from '../../types/database.types';
+import GlobalHeader from '../../components/GlobalHeader';
+import { useWebLayout } from '../../hooks/useWebLayout';
+import HomeDesktopLayout from '../../components/web/HomeDesktopLayout';
+import NetInfo from '@react-native-community/netinfo';
+import OfflineBanner from '../../components/OfflineBanner';
 import StickyVerse from '../../components/StickyVerse';
 import BrandText from '../../components/BrandText';
+import { FeedCardSkeleton } from '../../components/skeletons/FeedCardSkeleton';
 import {
   TYPOGRAPHY,
   SPACING,
@@ -188,15 +194,27 @@ function FeedCard({ item, onReact, onShare, onSave, hasReacted, hasSaved, colors
   );
 }
 
+
+
 // -----------------------------------------------------------------------
 // HomeScreen
 // -----------------------------------------------------------------------
 export default function HomeScreen(): React.JSX.Element {
   const router = useRouter();
-  const { user } = useAuth();
-  const { colors, isDarkMode } = useTheme();
+  const { user, profile } = useAuth();
+  const { colors, isDark } = useTheme();
   const { t } = useTranslation();
-  const styles = getStyles(colors, isDarkMode);
+  const styles = getStyles(colors, isDark);
+
+  const { isWide } = useWebLayout();
+  const [isOffline, setIsOffline] = useState<boolean>(false);
+
+  useEffect(() => {
+    const unsubscribe = NetInfo.addEventListener((state) => {
+      setIsOffline(state.isConnected === false);
+    });
+    return () => unsubscribe();
+  }, []);
 
   const calendarRef = useRef<ScrollView>(null);
   const calendarDays = buildCalendarDays();
@@ -251,7 +269,12 @@ export default function HomeScreen(): React.JSX.Element {
         setPage(currentPage + 1);
         setHasError(false);
       } catch (err) {
-        setHasError(true);
+        const netState = await NetInfo.fetch();
+        if (netState.isConnected === false) {
+          // Keep showing cached content/existing state
+        } else {
+          setHasError(true);
+        }
         console.error('[HomeScreen] fetchPosts error:', err);
       }
     },
@@ -467,10 +490,10 @@ export default function HomeScreen(): React.JSX.Element {
     if (!hasMore) return null;
     return (
       <View style={styles.footerLoader}>
-        <ActivityIndicator color={colors.accent} />
+        <FeedCardSkeleton />
       </View>
     );
-  }, [hasMore, colors]);
+  }, [hasMore]);
 
   const renderHeader = useCallback((): React.JSX.Element => (
     <>
@@ -491,25 +514,16 @@ export default function HomeScreen(): React.JSX.Element {
   // ----------------------------------------------------------------
   // Render
   // ----------------------------------------------------------------
-  return (
-    <View style={styles.container}>
+  const mainContent = (
+    <View style={[styles.container, Platform.OS === 'web' && styles.webContent]}>
       <StatusBar barStyle="light-content" backgroundColor={colors.primaryDark} />
 
       {/* App Bar */}
-      <LinearGradient colors={[colors.primary, colors.primaryDark]} style={styles.appBar}>
-        <View style={styles.appBarContent}>
-          <View>
-            {/* Custom BrandText Logo */}
-            <BrandText size={22} colorMode="dark" />
-          </View>
-          <TouchableOpacity
-            onPress={() => router.push('/(tabs)/notifications')}
-            style={styles.appBarIcon}
-          >
-            <Ionicons name="notifications-outline" size={20} color="#FFFFFF" />
-          </TouchableOpacity>
-        </View>
+      <GlobalHeader />
 
+      <OfflineBanner visible={isOffline} />
+
+      <LinearGradient colors={[colors.primary, colors.primaryDark]} style={styles.calendarStripWrapper}>
         {/* 30-Day Calendar Strip */}
         <ScrollView
           ref={calendarRef}
@@ -556,13 +570,14 @@ export default function HomeScreen(): React.JSX.Element {
 
       {/* Feed */}
       {isLoading ? (
-        <View style={styles.centered}>
-          <ActivityIndicator size="large" color={colors.accent} />
-          <Text style={styles.loadingText}>{t('loading.feed')}</Text>
+        <View style={{ paddingHorizontal: 16, paddingTop: 8 }}>
+          {[1, 2, 3].map((i) => (
+            <FeedCardSkeleton key={i} />
+          ))}
         </View>
       ) : hasError ? (
         <View style={styles.centered}>
-          <Ionicons name="warning-outline" size={48} color={colors.error} style={{ marginBottom: 12 }} />
+          <Ionicons name="warning-outline" size={48} color={colors.danger} style={{ marginBottom: 12 }} />
           <Text style={styles.errorText}>{t('error.load')}</Text>
           <TouchableOpacity
             style={styles.retryButton}
@@ -605,7 +620,38 @@ export default function HomeScreen(): React.JSX.Element {
       )}
     </View>
   );
+
+  if (Platform.OS === 'web') {
+    return (
+      <HomeDesktopLayout
+        userName={profile?.full_name ?? 'Friend'}
+        avatarUrl={profile?.avatar_url ?? null}
+        calendarDays={calendarDays}
+        selectedDayIndex={selectedDayIndex}
+        todayIndex={todayIndex}
+        onSelectDay={setSelectedDayIndex}
+        posts={posts}
+        reactedPosts={reactedPosts}
+        savedPosts={savedPosts}
+        onReact={handleReact}
+        onSave={handleSave}
+        onLoadMore={() => fetchPosts(false)}
+        hasMore={hasMore}
+        isLoading={isLoading}
+        hasError={hasError}
+        onRetry={() => fetchPosts(true)}
+        isRefreshing={isRefreshing}
+        onRefresh={handleRefresh}
+        isOffline={isOffline}
+        isWide={isWide}
+      />
+    );
+  }
+
+  return mainContent;
 }
+
+
 
 // -----------------------------------------------------------------------
 // Styles
@@ -701,9 +747,18 @@ const getCardStyles = (colors: any) =>
     actionTextSaved: { color: colors.accent },
   });
 
-const getStyles = (colors: any, isDarkMode: boolean) =>
+const getStyles = (colors: any, isDark: boolean) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.backgroundPrimary },
+    webContent: {
+      maxWidth: 960,
+      width: '100%',
+      alignSelf: 'center' as const,
+    },
+    calendarStripWrapper: {
+      paddingTop: 0,
+      paddingBottom: 0,
+    },
     appBar: {
       paddingTop: 48,
       paddingBottom: 0,

@@ -15,7 +15,6 @@ import {
   TextInput,
   Modal,
   Alert,
-  ActivityIndicator,
   RefreshControl,
   StatusBar,
   KeyboardAvoidingView,
@@ -30,7 +29,13 @@ import { supabase, uploadToStorage } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import { useTranslation } from '../../context/LanguageContext';
+import GlobalHeader from '../../components/GlobalHeader';
+import { useWebLayout } from '../../hooks/useWebLayout';
+import ContextPanel from '../../components/web/ContextPanel';
 import { CommunityPost, CommunityPostInsert, CommunityPostUpdate } from '../../types/database.types';
+import NetInfo from '@react-native-community/netinfo';
+import OfflineBanner from '../../components/OfflineBanner';
+import { CommunityPostSkeleton } from '../../components/skeletons/CommunityPostSkeleton';
 import {
   TYPOGRAPHY,
   SPACING,
@@ -268,7 +273,7 @@ function CreatePostModal({ visible, onClose, onPublished, userId, colors, t }: C
             <Text style={styles.title}>{t('community.create.title')}</Text>
             <TouchableOpacity onPress={handleSubmit} disabled={isUploading}>
               {isUploading ? (
-                <ActivityIndicator color={colors.primary} />
+                <Text style={styles.postBtn}>Posting...</Text>
               ) : (
                 <Text style={styles.postBtn}>{t('community.create.post')}</Text>
               )}
@@ -322,6 +327,7 @@ export default function CommunityScreen(): React.JSX.Element {
   const { colors } = useTheme();
   const { t } = useTranslation();
   const styles = getStyles(colors);
+  const { isWide } = useWebLayout();
 
   const isAdmin = role === 'admin';
 
@@ -331,6 +337,14 @@ export default function CommunityScreen(): React.JSX.Element {
   const [showCreate, setShowCreate] = useState(false);
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
+  const [isOffline, setIsOffline] = useState<boolean>(false);
+
+  useEffect(() => {
+    const unsubscribe = NetInfo.addEventListener((state) => {
+      setIsOffline(state.isConnected === false);
+    });
+    return () => unsubscribe();
+  }, []);
 
   const fetchPosts = useCallback(async (reset = false): Promise<void> => {
     const currentPage = reset ? 0 : page;
@@ -369,6 +383,10 @@ export default function CommunityScreen(): React.JSX.Element {
       setPage(currentPage + 1);
     } catch (err) {
       console.error('[CommunityScreen]', err);
+      const netState = await NetInfo.fetch();
+      if (netState.isConnected === false) {
+        setIsOffline(true);
+      }
     }
   }, [page, hasMore]);
 
@@ -423,24 +441,18 @@ export default function CommunityScreen(): React.JSX.Element {
     [user, isAdmin, handleFlag, handleDelete, colors]
   );
 
-  return (
-    <View style={styles.container}>
+  const mainContent = (
+    <View style={[styles.container, Platform.OS === 'web' && styles.webContent]}>
       <StatusBar barStyle="light-content" backgroundColor={colors.primaryDark} />
-      <LinearGradient colors={[colors.primary, colors.primaryDark]} style={styles.header}>
-        <View style={styles.headerRow}>
-          <View>
-            <Text style={styles.headerTitle}>{t('community.title')}</Text>
-            <Text style={styles.headerSub}>{t('community.subtitle')}</Text>
-          </View>
-          <TouchableOpacity style={styles.createBtn} onPress={() => setShowCreate(true)}>
-            <Text style={styles.createBtnText}>+ {t('community.create.post')}</Text>
-          </TouchableOpacity>
-        </View>
-      </LinearGradient>
+      <GlobalHeader />
+
+      <OfflineBanner visible={isOffline} />
 
       {isLoading ? (
-        <View style={styles.centered}>
-          <ActivityIndicator size="large" color={colors.accent} />
+        <View style={{ padding: 16 }}>
+          {[1, 2, 3].map((i) => (
+            <CommunityPostSkeleton key={i} />
+          ))}
         </View>
       ) : (
         <FlatList<CommunityPost>
@@ -491,7 +503,7 @@ export default function CommunityScreen(): React.JSX.Element {
                   activeOpacity={0.7}
                   onPress={() => setShowCreate(true)}
                 >
-                  <Ionicons name="videocam" size={18} color={colors.info} style={{ marginRight: 6 }} />
+                  <Ionicons name="videocam" size={18} color={colors.primaryLight} style={{ marginRight: 6 }} />
                   <Text style={styles.inlineActionBtnText}>{t('community.create.video')}</Text>
                 </TouchableOpacity>
               </View>
@@ -529,6 +541,56 @@ export default function CommunityScreen(): React.JSX.Element {
       )}
     </View>
   );
+
+  if (isWide) {
+    return (
+      <View style={{ flex: 1, flexDirection: 'row' }}>
+        <View style={{ flex: 1 }}>
+          {mainContent}
+        </View>
+        <ContextPanel>
+          {/* Card 1: Post Guidelines */}
+          <View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+              <Text style={{ fontWeight: '700', fontSize: 14, color: colors.textPrimary }}>Post Guidelines</Text>
+            </View>
+            <Text style={{ fontSize: 13, color: colors.textSecondary }}>
+              Keep posts encouraging and faith-focused. Be respectful of others and follow the community rules.
+            </Text>
+          </View>
+
+          {/* Card 2: Search */}
+          <View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+              <Text style={{ fontWeight: '700', fontSize: 14, color: colors.textPrimary }}>Search</Text>
+            </View>
+            <Text style={{ fontSize: 12, color: colors.textMuted, marginBottom: 8 }}>
+              Search features are coming soon.
+            </Text>
+            <View style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              backgroundColor: colors.lightGray || '#ECEFF1',
+              borderRadius: 8,
+              paddingHorizontal: 12,
+              height: 40,
+              opacity: 0.6
+            }}>
+              <Ionicons name="search-outline" size={16} color={colors.textMuted} style={{ marginRight: 8 }} />
+              <TextInput
+                style={{ flex: 1, fontSize: 13, color: colors.textMuted }}
+                placeholder="Search posts..."
+                placeholderTextColor={colors.textMuted}
+                editable={false}
+              />
+            </View>
+          </View>
+        </ContextPanel>
+      </View>
+    );
+  }
+
+  return mainContent;
 }
 
 // -----------------------------------------------------------------------
@@ -646,6 +708,11 @@ const getCreateStyles = (colors: any) =>
 const getStyles = (colors: any) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.backgroundPrimary },
+    webContent: {
+      maxWidth: 960,
+      width: '100%',
+      alignSelf: 'center' as const,
+    },
     header: { paddingTop: 48, paddingBottom: SPACING.base },
     headerRow: {
       flexDirection: 'row',

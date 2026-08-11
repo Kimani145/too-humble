@@ -55,6 +55,40 @@ serve(async (req: Request) => {
     });
   }
 
+  // Validate JWT user against body.userId if Bearer token is provided
+  const authHeader = req.headers.get('Authorization');
+  if (authHeader) {
+    const token = authHeader.replace(/^Bearer\s+/i, '');
+    if (token) {
+      const { data: { user: authUser }, error: authError } = await adminClient.auth.getUser(token);
+      if (authError || !authUser) {
+        return new Response(JSON.stringify({ error: 'Unauthorized: Invalid session token' }), {
+          status: 401, headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (authUser.id !== userId) {
+        return new Response(JSON.stringify({ error: 'Forbidden: User identity mismatch' }), {
+          status: 403, headers: { 'Content-Type': 'application/json' },
+        });
+      }
+    }
+  }
+
+  const { data: allowed, error: rlError } = await adminClient
+    .rpc('check_rate_limit', {
+      p_user_id: userId,
+      p_action: 'paypal_order',
+      p_max: 5,
+      p_window_seconds: 3600,
+    });
+
+  if (rlError || !allowed) {
+    return new Response(
+      JSON.stringify({ error: 'Rate limit exceeded. Please wait before trying again.' }),
+      { status: 429, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+
   try {
     const token = await getPayPalAccessToken();
 
@@ -90,7 +124,7 @@ serve(async (req: Request) => {
     if (!approvalLink) throw new Error('No approval URL returned by PayPal');
 
     // Write pending ledger row using service role
-    const { error: ledgerError } = await adminClient.from('monetization_ledger').insert({
+    const { data: ledgerRow, error: ledgerError } = await adminClient.from('monetization_ledger').insert({
       user_id: userId,
       payment_gateway: 'paypal',
       amount,
@@ -98,11 +132,20 @@ serve(async (req: Request) => {
       status: 'pending',
       reference_id: orderData.id,
       metadata: { paypal_order_id: orderData.id },
-    });
+    }).select('id').single();
 
     if (ledgerError) {
       console.error('[paypal-create-order] ledger write error:', ledgerError.message);
     }
+
+    await adminClient.from('audit_log').insert({
+      actor_id: userId,
+      action: 'paypal_order_created',
+      target_id: ledgerRow?.id ?? null,
+      target_table: 'monetization_ledger',
+      correlation_id: orderData.id,
+      metadata: { amount, gateway: 'paypal' },
+    });
 
     return new Response(
       JSON.stringify({ approvalUrl: approvalLink.href, orderId: orderData.id }),

@@ -1,9 +1,10 @@
 // app/(tabs)/explore.tsx
 import React from 'react';
-import { View, Text, StyleSheet, StatusBar, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, StatusBar, ScrollView, Platform } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import StickyVerse from '../../src/components/StickyVerse';
+import GlobalHeader from '../../src/components/GlobalHeader';
 import { useTheme } from '../../src/context/ThemeContext';
 import { useTranslation } from '../../src/context/LanguageContext';
 import { TYPOGRAPHY, SPACING } from '../../src/constants/theme';
@@ -14,12 +15,9 @@ export default function ExploreScreen(): React.JSX.Element {
   const styles = getStyles(colors);
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, Platform.OS === 'web' && styles.webContent]}>
       <StatusBar barStyle="light-content" backgroundColor={colors.primaryDark} />
-      <LinearGradient colors={[colors.primary, colors.primaryDark]} style={styles.header}>
-        <Text style={styles.title}>{t('explore.title')}</Text>
-        <Text style={styles.subtitle}>{t('explore.subtitle')}</Text>
-      </LinearGradient>
+      <GlobalHeader />
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <StickyVerse />
         <View style={styles.comingSoon}>
@@ -37,6 +35,11 @@ export default function ExploreScreen(): React.JSX.Element {
 const getStyles = (colors: any) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.backgroundPrimary },
+    webContent: {
+      maxWidth: 960,
+      width: '100%',
+      alignSelf: 'center' as const,
+    },
     header: { paddingTop: 52, paddingBottom: SPACING.xl, paddingHorizontal: SPACING.base },
     title: { fontSize: TYPOGRAPHY.fontSize['2xl'], fontWeight: '800', color: '#FFFFFF' },
     subtitle: { fontSize: TYPOGRAPHY.fontSize.sm, color: colors.accentLight, marginTop: 4 },

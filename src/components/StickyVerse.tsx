@@ -15,13 +15,17 @@ import {
 } from 'react-native';
 import { getDailyVerse } from '../services/bibleService';
 import { DailyVerse } from '../types/database.types';
-import { COLORS, TYPOGRAPHY, SPACING, BORDER_RADIUS, SHADOWS } from '../constants/theme';
+import { useTheme, AppColors } from '../context/ThemeContext';
+import { TYPOGRAPHY, SPACING, BORDER_RADIUS, SHADOWS } from '../constants/theme';
 
 interface StickyVerseProps {
   onPress?: () => void;
 }
 
 export default function StickyVerse({ onPress }: StickyVerseProps): React.JSX.Element {
+  const { colors } = useTheme();
+  const styles = getStyles(colors);
+
   const [verse, setVerse] = useState<DailyVerse | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [hasError, setHasError] = useState<boolean>(false);
@@ -43,7 +47,7 @@ export default function StickyVerse({ onPress }: StickyVerseProps): React.JSX.El
     } finally {
       setIsLoading(false);
     }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [fadeAnim]);
 
   useEffect(() => {
     loadVerse();
@@ -71,7 +75,7 @@ export default function StickyVerse({ onPress }: StickyVerseProps): React.JSX.El
           <Text style={styles.labelIcon}>📖</Text>
           <Text style={styles.label}>Verse of the Day</Text>
         </View>
-        <ActivityIndicator color={COLORS.primary} size="small" style={styles.loader} />
+        <ActivityIndicator color={colors.primary} size="small" style={styles.loader} />
       </View>
     );
   }
@@ -124,65 +128,66 @@ export default function StickyVerse({ onPress }: StickyVerseProps): React.JSX.El
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    backgroundColor: COLORS.white,
-    marginHorizontal: SPACING.base,
-    marginVertical: SPACING.sm,
-    borderRadius: BORDER_RADIUS.lg,
-    padding: SPACING.base,
-    borderLeftWidth: 4,
-    borderLeftColor: COLORS.primary,
-    ...SHADOWS.sm,
-  },
-  labelRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: SPACING.sm,
-  },
-  labelIcon: { fontSize: 16, marginRight: 6 },
-  label: {
-    fontSize: TYPOGRAPHY.fontSize.sm,
-    fontWeight: '700',
-    color: COLORS.primary,
-    flex: 1,
-  },
-  shareButton: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: COLORS.lightGray,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  shareIcon: {
-    fontSize: 14,
-    color: COLORS.primary,
-    fontWeight: '700',
-  },
-  verseText: {
-    fontSize: TYPOGRAPHY.fontSize.base,
-    color: COLORS.charcoal,
-    lineHeight: TYPOGRAPHY.fontSize.base * 1.6,
-    fontStyle: 'italic',
-    marginBottom: SPACING.xs,
-  },
-  reference: {
-    fontSize: TYPOGRAPHY.fontSize.sm,
-    color: COLORS.primary,
-    fontWeight: '600',
-  },
-  loader: { marginVertical: SPACING.md },
-  errorText: {
-    fontSize: TYPOGRAPHY.fontSize.sm,
-    color: COLORS.midGray,
-    textAlign: 'center',
-  },
-  retryText: {
-    fontSize: TYPOGRAPHY.fontSize.sm,
-    color: COLORS.primary,
-    fontWeight: '600',
-    textAlign: 'center',
-    marginTop: 4,
-  },
-});
+const getStyles = (colors: AppColors) =>
+  StyleSheet.create({
+    container: {
+      backgroundColor: colors.backgroundCard,
+      marginHorizontal: SPACING.base,
+      marginVertical: SPACING.sm,
+      borderRadius: BORDER_RADIUS.lg,
+      padding: SPACING.base,
+      borderLeftWidth: 4,
+      borderLeftColor: colors.primary,
+      ...SHADOWS.sm,
+    },
+    labelRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: SPACING.sm,
+    },
+    labelIcon: { fontSize: 16, marginRight: 6 },
+    label: {
+      fontSize: TYPOGRAPHY.fontSize.sm,
+      fontWeight: '700',
+      color: colors.primary,
+      flex: 1,
+    },
+    shareButton: {
+      width: 28,
+      height: 28,
+      borderRadius: 14,
+      backgroundColor: colors.lightGray,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    shareIcon: {
+      fontSize: 14,
+      color: colors.primary,
+      fontWeight: '700',
+    },
+    verseText: {
+      fontSize: TYPOGRAPHY.fontSize.base,
+      color: colors.textPrimary,
+      lineHeight: TYPOGRAPHY.fontSize.base * 1.6,
+      fontStyle: 'italic',
+      marginBottom: SPACING.xs,
+    },
+    reference: {
+      fontSize: TYPOGRAPHY.fontSize.sm,
+      color: colors.primary,
+      fontWeight: '600',
+    },
+    loader: { marginVertical: SPACING.md },
+    errorText: {
+      fontSize: TYPOGRAPHY.fontSize.sm,
+      color: colors.textMuted,
+      textAlign: 'center',
+    },
+    retryText: {
+      fontSize: TYPOGRAPHY.fontSize.sm,
+      color: colors.primary,
+      fontWeight: '600',
+      textAlign: 'center',
+      marginTop: 4,
+    },
+  });

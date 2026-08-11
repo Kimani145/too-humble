@@ -11,6 +11,28 @@ import { AuthProvider, useAuth } from '../src/context/AuthContext';
 import { ThemeProvider } from '../src/context/ThemeContext';
 import { LanguageProvider } from '../src/context/LanguageContext';
 import LoadingScreen from '../src/screens/Auth/LoadingScreen';
+import * as Sentry from '@sentry/react-native';
+
+import { ErrorBoundary } from '../src/components/ErrorBoundary';
+
+Sentry.init({
+  dsn: 'https://f8c622a303b5046ef156bade83625c9f@o4511658401005568.ingest.de.sentry.io/4511658428465232',
+
+  // Adds more context data to events (IP address, cookies, user, etc.)
+  // For more information, visit: https://docs.sentry.io/platforms/react-native/data-management/data-collected/
+  sendDefaultPii: true,
+
+  // Enable Logs
+  enableLogs: true,
+
+  // Configure Session Replay
+  replaysSessionSampleRate: 0.1,
+  replaysOnErrorSampleRate: 1,
+  integrations: [Sentry.mobileReplayIntegration(), Sentry.feedbackIntegration()],
+
+  // uncomment the line below to enable Spotlight (https://spotlightjs.com)
+  // spotlight: __DEV__,
+});
 
 // Keep splash visible during bootstrap
 SplashScreen.preventAutoHideAsync();
@@ -42,15 +64,16 @@ function RootNavigator(): React.JSX.Element {
   );
 }
 
-export default function RootLayout(): React.JSX.Element {
+export default Sentry.wrap(function RootLayout() {
   return (
-    <AuthProvider>
+    <ErrorBoundary>
       <ThemeProvider>
-        <LanguageProvider>
-          <RootNavigator />
-        </LanguageProvider>
+        <AuthProvider>
+          <LanguageProvider>
+            <RootNavigator />
+          </LanguageProvider>
+        </AuthProvider>
       </ThemeProvider>
-    </AuthProvider>
+    </ErrorBoundary>
   );
-}
-
+});

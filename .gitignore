@@ -10,11 +10,15 @@ web-build/
 .env.development.local
 .env.test.local
 .env.production.local
+# Supabase edge function secrets — never commit
+supabase/functions/.env.production
+supabase/functions/.env.local
 *.jks
 *.p8
 *.p12
 *.key
 *.mobileprovision
+dev-credentials.local.md
 
 # OS/System files
 .DS_Store
@@ -51,3 +55,13 @@ expo-env.d.ts
 
 # Supabase CLI binary (if downloaded locally)
 /supabase
+
+.env.local
+BIBLE_AUDIT_REPORT.md
+FORENSIC_TIMELINE.md
+DATA_FLOW_TRACE.md
+REGRESSION_ANALYSIS.md
+ROOT_CAUSE_REPORT.md
+TECH_DEBT.md
+TECH_DEBT_UPDATED.md
+*.zip

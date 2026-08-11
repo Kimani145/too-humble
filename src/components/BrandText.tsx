@@ -1,7 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, ViewStyle, StyleProp } from 'react-native';
 import Svg, { Rect } from 'react-native-svg';
-import { COLORS } from '../constants/theme';
 import { useTheme } from '../context/ThemeContext';
 
 interface BrandTextProps {
@@ -15,7 +14,7 @@ export default function BrandText({
   colorMode = 'auto',
   style,
 }: BrandTextProps): React.JSX.Element {
-  const { isDarkMode, colors } = useTheme();
+  const { isDark, colors } = useTheme();
 
   // Determine colors based on mode
   let primaryTextColor: string = colors.white;
@@ -24,7 +23,7 @@ export default function BrandText({
   } else if (colorMode === 'dark') {
     primaryTextColor = '#FFFFFF'; // White
   } else {
-    primaryTextColor = isDarkMode ? colors.white : '#1A2B5E';
+    primaryTextColor = isDark ? colors.white : '#1A2B5E';
   }
 
   const goldColor = '#F0A500';

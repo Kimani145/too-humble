@@ -15,6 +15,8 @@ const DARAJA_CONSUMER_SECRET = Deno.env.get('DARAJA_CONSUMER_SECRET')!;
 const DARAJA_SHORTCODE = Deno.env.get('DARAJA_SHORTCODE')!;
 const DARAJA_PASSKEY = Deno.env.get('DARAJA_PASSKEY')!;
 const DARAJA_CALLBACK_URL = Deno.env.get('DARAJA_CALLBACK_URL')!;
+const DARAJA_TRANSACTION_TYPE =
+  Deno.env.get('DARAJA_TRANSACTION_TYPE') ?? 'CustomerPayBillOnline';
 const DARAJA_BASE = Deno.env.get('DARAJA_SANDBOX') === 'true'
   ? 'https://sandbox.safaricom.co.ke'
   : 'https://api.safaricom.co.ke';
@@ -70,6 +72,40 @@ serve(async (req: Request) => {
     });
   }
 
+  // Validate JWT user against body.userId if Bearer token is provided
+  const authHeader = req.headers.get('Authorization');
+  if (authHeader) {
+    const token = authHeader.replace(/^Bearer\s+/i, '');
+    if (token) {
+      const { data: { user: authUser }, error: authError } = await adminClient.auth.getUser(token);
+      if (authError || !authUser) {
+        return new Response(JSON.stringify({ error: 'Unauthorized: Invalid session token' }), {
+          status: 401, headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (authUser.id !== userId) {
+        return new Response(JSON.stringify({ error: 'Forbidden: User identity mismatch' }), {
+          status: 403, headers: { 'Content-Type': 'application/json' },
+        });
+      }
+    }
+  }
+
+  const { data: allowed, error: rlError } = await adminClient
+    .rpc('check_rate_limit', {
+      p_user_id: userId,
+      p_action: 'mpesa_stk_push',
+      p_max: 3,
+      p_window_seconds: 600,
+    });
+
+  if (rlError || !allowed) {
+    return new Response(
+      JSON.stringify({ error: 'Rate limit exceeded. Please wait before trying again.' }),
+      { status: 429, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+
   if (!/^254\d{9}$/.test(phone)) {
     return new Response(JSON.stringify({ error: 'Invalid phone format. Use 254XXXXXXXXX' }), {
       status: 400, headers: { 'Content-Type': 'application/json' },
@@ -91,14 +127,15 @@ serve(async (req: Request) => {
       BusinessShortCode: DARAJA_SHORTCODE,
       Password: password,
       Timestamp: timestamp,
-      TransactionType: 'CustomerPayBillOnline',
+      TransactionType: DARAJA_TRANSACTION_TYPE,
       Amount: Math.ceil(amount),
       PartyA: phone,
       PartyB: DARAJA_SHORTCODE,
       PhoneNumber: phone,
       CallBackURL: DARAJA_CALLBACK_URL,
+      // Max 12 chars — shown to user in M-PESA USSD push message
       AccountReference: 'TooHumble',
-      TransactionDesc: 'Too Humble Donation',
+      TransactionDesc: 'TH Donation',
     };
 
     const stkRes = await fetch(`${DARAJA_BASE}/mpesa/stkpush/v1/processrequest`, {
@@ -116,7 +153,7 @@ serve(async (req: Request) => {
     }
 
     // Write pending ledger row using service role (bypasses RLS)
-    const { error: ledgerError } = await adminClient.from('monetization_ledger').insert({
+    const { data: ledgerRow, error: ledgerError } = await adminClient.from('monetization_ledger').insert({
       user_id: userId,
       payment_gateway: 'daraja',
       amount,
@@ -128,11 +165,31 @@ serve(async (req: Request) => {
         MerchantRequestID: stkData.MerchantRequestID,
         CheckoutRequestID: stkData.CheckoutRequestID,
       },
-    });
+    }).select('id').single();
 
     if (ledgerError) {
-      console.error('[mpesa-initiate] ledger write error:', ledgerError.message);
+      if (ledgerError.code === '23505') {
+        // Duplicate CheckoutRequestID — STK was initiated twice. Return existing ID.
+        console.warn('[mpesa-initiate] Duplicate CheckoutRequestID:', stkData.CheckoutRequestID);
+      } else {
+        // Hard failure — the STK Push succeeded but we have no ledger row.
+        // Return 500 so the client knows the state is inconsistent.
+        console.error('[mpesa-initiate] ledger write error:', ledgerError.message);
+        return new Response(
+          JSON.stringify({ error: 'Payment initiated but ledger record failed. Contact support.' }),
+          { status: 500, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
     }
+
+    await adminClient.from('audit_log').insert({
+      actor_id: userId,
+      action: 'mpesa_stk_initiated',
+      target_id: ledgerRow?.id ?? null,
+      target_table: 'monetization_ledger',
+      correlation_id: stkData.CheckoutRequestID,
+      metadata: { amount, phone, gateway: 'daraja' },
+    });
 
     return new Response(
       JSON.stringify({ CheckoutRequestID: stkData.CheckoutRequestID }),

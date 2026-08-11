@@ -1,11 +1,13 @@
 // =============================================================================
 // TOO HUMBLE - PAYMENT SERVICE
-// PayPal WebView + Daraja M-Pesa (via Edge Functions) + ledger read
+// Production Hardening Sprint — Payments Workstream
+//
+// PayPal WebView + Daraja M-Pesa (via Edge Functions) + ledger read/pending check
 //
 // SECURITY NOTE:
 // Daraja credentials (consumer key/secret/passkey) MUST NOT be in the client.
-// All M-Pesa STK Push calls go through the supabase/functions/mpesa-initiate
-// Edge Function which holds secrets in env vars server-side.
+// All M-Pesa STK Push calls go through supabase/functions/mpesa-initiate
+// which holds secrets in env vars server-side.
 //
 // PayPal order creation goes through supabase/functions/paypal-create-order.
 // Only PAYPAL_CLIENT_ID (a public identifier) is acceptable client-side.
@@ -20,8 +22,19 @@ import {
 // Edge Function base URL — derived from the Supabase project URL
 const EDGE_FUNCTION_BASE = (): string => {
   const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
-  return supabaseUrl.replace('.supabase.co', '.supabase.co/functions/v1');
+  return `${supabaseUrl}/functions/v1`;
 };
+
+// -----------------------------------------------------------------------
+// getAuthHeaders — attach session token to Edge Function requests
+// -----------------------------------------------------------------------
+async function getAuthHeaders(): Promise<Record<string, string>> {
+  const { data: sessionData } = await supabase.auth.getSession();
+  const accessToken = sessionData.session?.access_token;
+  return accessToken
+    ? { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' }
+    : { 'Content-Type': 'application/json' };
+}
 
 // -----------------------------------------------------------------------
 // initiateMpesaSTKPush — calls the mpesa-initiate Edge Function
@@ -55,16 +68,10 @@ export async function initiateMpesaSTKPush(params: {
   }
 
   try {
-    // Get the current session token to authenticate the Edge Function call
-    const { data: sessionData } = await supabase.auth.getSession();
-    const accessToken = sessionData.session?.access_token;
-
+    const headers = await getAuthHeaders();
     const res = await fetch(`${EDGE_FUNCTION_BASE()}/mpesa-initiate`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-      },
+      headers,
       body: JSON.stringify({ userId, phone: phoneNumber, amount }),
     });
 
@@ -101,15 +108,10 @@ export async function createPayPalOrder(params: {
 }): Promise<{ approvalUrl: string; orderId: string }> {
   const { userId, amount } = params;
 
-  const { data: sessionData } = await supabase.auth.getSession();
-  const accessToken = sessionData.session?.access_token;
-
+  const headers = await getAuthHeaders();
   const res = await fetch(`${EDGE_FUNCTION_BASE()}/paypal-create-order`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-    },
+    headers,
     body: JSON.stringify({ userId, amount }),
   });
 
@@ -134,4 +136,44 @@ export async function getUserLedger(userId: string): Promise<MonetizationLedger[
 
   if (error) throw error;
   return (data ?? []) as MonetizationLedger[];
+}
+
+// -----------------------------------------------------------------------
+// getPendingTransaction — check if user has an unresolved M-Pesa payment
+// Returns the most recent 'pending' daraja row, or null.
+// Used by MonetizationScreen to surface a "complete your payment" prompt.
+// -----------------------------------------------------------------------
+export async function getPendingMpesaTransaction(
+  userId: string,
+): Promise<MonetizationLedger | null> {
+  const { data, error } = await supabase
+    .from('monetization_ledger')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('payment_gateway', 'daraja')
+    .eq('status', 'pending')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    console.error('[paymentService] getPendingMpesaTransaction:', error.message);
+    return null;
+  }
+  return data as MonetizationLedger | null;
+}
+
+// -----------------------------------------------------------------------
+// retryMpesaSTKPush — resend STK Push for an existing pending transaction
+// A new STK Push is initiated with the SAME amount and phone number.
+// The previous 'pending' row will be expired by the DB cron job after 10 min.
+// A new 'pending' row will be created by mpesa-initiate.
+// -----------------------------------------------------------------------
+export async function retryMpesaSTKPush(params: {
+  userId: string;
+  phoneNumber: string;
+  amount: number;
+}): Promise<PaymentResult> {
+  // Delegate to the same initiation path — the cron job handles expiring the old row
+  return initiateMpesaSTKPush(params);
 }

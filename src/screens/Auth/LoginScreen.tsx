@@ -23,7 +23,9 @@ import {
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../../context/AuthContext';
-import { COLORS, TYPOGRAPHY, SPACING, BORDER_RADIUS, SHADOWS } from '../../constants/theme';
+import { useTheme, AppColors } from '../../context/ThemeContext';
+import { TYPOGRAPHY, SPACING, BORDER_RADIUS, SHADOWS } from '../../constants/theme';
+import BrandText from '../../components/BrandText';
 
 // -----------------------------------------------------------------------
 // Rotating verse data (desktop right panel only)
@@ -68,6 +70,10 @@ export default function LoginScreen(): React.JSX.Element {
   const router = useRouter();
   const { login, loginWithGoogle, isLoading, isAuthenticated, role } = useAuth();
   const { width } = useWindowDimensions();
+  const { colors } = useTheme();
+
+  const styles = getStyles(colors);
+  const desktopStyles = getDesktopStyles(colors);
 
   const isDesktop: boolean = Platform.OS === 'web' && width >= 768;
 
@@ -127,7 +133,6 @@ export default function LoginScreen(): React.JSX.Element {
     setIsSubmitting(true);
     try {
       await login(email.trim().toLowerCase(), password);
-      // Navigation handled by useEffect above on auth state change
     } catch (err: unknown) {
       const message =
         err instanceof Error ? err.message : 'Login failed. Please try again.';
@@ -151,9 +156,6 @@ export default function LoginScreen(): React.JSX.Element {
     router.push('/auth/forgot-password' as never);
   }, [router]);
 
-  // ----------------------------------------------------------------
-  // Render
-  // ----------------------------------------------------------------
   const isBusy = isSubmitting || isLoading;
 
   // ----------------------------------------------------------------
@@ -176,7 +178,7 @@ export default function LoginScreen(): React.JSX.Element {
               if (emailError) setEmailError(null);
             }}
             placeholder="yourname@email.com"
-            placeholderTextColor={COLORS.midGray}
+            placeholderTextColor={colors.textMuted}
             autoCapitalize="none"
             keyboardType="email-address"
             autoComplete="email"
@@ -200,7 +202,7 @@ export default function LoginScreen(): React.JSX.Element {
               if (passwordError) setPasswordError(null);
             }}
             placeholder="••••••••"
-            placeholderTextColor={COLORS.midGray}
+            placeholderTextColor={colors.textMuted}
             secureTextEntry={!showPassword}
             autoComplete="password"
             textContentType="password"
@@ -235,7 +237,7 @@ export default function LoginScreen(): React.JSX.Element {
         activeOpacity={0.85}
       >
         {isBusy ? (
-          <ActivityIndicator color={COLORS.white} />
+          <ActivityIndicator color={colors.white} />
         ) : (
           <Text style={styles.loginButtonText}>Login</Text>
         )}
@@ -276,7 +278,7 @@ export default function LoginScreen(): React.JSX.Element {
     const currentQuote: PanelQuote = PANEL_QUOTES[quoteIndex];
     return (
       <View style={desktopStyles.root}>
-        <StatusBar barStyle="light-content" backgroundColor={COLORS.primary} />
+        <StatusBar barStyle="light-content" backgroundColor={colors.primary} />
 
         {/* Left panel — form */}
         <View style={desktopStyles.leftPanel}>
@@ -291,12 +293,10 @@ export default function LoginScreen(): React.JSX.Element {
 
         {/* Right panel — brand + rotating verse */}
         <LinearGradient
-          colors={[COLORS.primary, COLORS.primaryDark]}
+          colors={[colors.primary, colors.primaryDark]}
           style={desktopStyles.rightPanel}
         >
-          <Text style={desktopStyles.crossMotif}>✝</Text>
-
-          <Text style={desktopStyles.brandName}>TOO HUMBLE</Text>
+          <BrandText size={42} colorMode="dark" style={{ marginBottom: SPACING.md }} />
           <Text style={desktopStyles.brandTagline}>Grow in faith daily ♡</Text>
 
           <Animated.View style={[desktopStyles.verseContainer, { opacity: fadeAnim }]}>
@@ -329,17 +329,12 @@ export default function LoginScreen(): React.JSX.Element {
       style={styles.flex}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
-      <StatusBar barStyle="light-content" backgroundColor={COLORS.primary} />
+      <StatusBar barStyle="light-content" backgroundColor={colors.primary} />
       <LinearGradient
-        colors={[COLORS.primary, COLORS.primaryDark]}
+        colors={[colors.primary, colors.primaryDark]}
         style={styles.headerGradient}
       >
-        {/* Cross logo */}
-        <View style={styles.logoContainer}>
-          <View style={styles.crossVertical} />
-          <View style={styles.crossHorizontal} />
-        </View>
-        <Text style={styles.brandName}>TOO HUMBLE</Text>
+        <BrandText size={36} colorMode="dark" style={{ marginBottom: SPACING.sm }} />
         <Text style={styles.brandTagline}>Grow in faith daily ♡</Text>
       </LinearGradient>
 
@@ -358,246 +353,248 @@ export default function LoginScreen(): React.JSX.Element {
 // -----------------------------------------------------------------------
 // Mobile / shared styles
 // -----------------------------------------------------------------------
-const styles = StyleSheet.create({
-  flex: { flex: 1, backgroundColor: COLORS.white },
-  headerGradient: {
-    alignItems: 'center',
-    paddingTop: 60,
-    paddingBottom: SPACING['3xl'],
-  },
-  logoContainer: {
-    width: 56,
-    height: 56,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: SPACING.base,
-  },
-  crossVertical: {
-    position: 'absolute',
-    width: 10,
-    height: 56,
-    backgroundColor: COLORS.accent,
-    borderRadius: 5,
-  },
-  crossHorizontal: {
-    position: 'absolute',
-    width: 42,
-    height: 10,
-    backgroundColor: COLORS.accent,
-    borderRadius: 5,
-    top: 10,
-  },
-  brandName: {
-    fontSize: TYPOGRAPHY.fontSize['2xl'],
-    fontWeight: '800',
-    color: COLORS.white,
-    letterSpacing: 3,
-  },
-  brandTagline: {
-    fontSize: TYPOGRAPHY.fontSize.sm,
-    color: COLORS.accentLight,
-    marginTop: SPACING.xs,
-  },
-  formContainer: { flex: 1, backgroundColor: COLORS.white },
-  formContent: {
-    paddingHorizontal: SPACING['2xl'],
-    paddingTop: SPACING['2xl'],
-    paddingBottom: SPACING['5xl'],
-  },
-  heading: {
-    fontSize: TYPOGRAPHY.fontSize['2xl'],
-    fontWeight: '700',
-    color: COLORS.charcoal,
-    marginBottom: SPACING.xs,
-  },
-  subheading: {
-    fontSize: TYPOGRAPHY.fontSize.base,
-    color: COLORS.midGray,
-    marginBottom: SPACING['2xl'],
-  },
-  fieldGroup: { marginBottom: SPACING.lg },
-  label: {
-    fontSize: TYPOGRAPHY.fontSize.sm,
-    fontWeight: '600',
-    color: COLORS.darkGray,
-    marginBottom: SPACING.xs,
-  },
-  inputWrapper: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.offWhite,
-    borderRadius: BORDER_RADIUS.md,
-    borderWidth: 1.5,
-    borderColor: COLORS.lightGray,
-    paddingHorizontal: SPACING.base,
-    ...SHADOWS.sm,
-  },
-  inputError: { borderColor: COLORS.error },
-  input: {
-    flex: 1,
-    height: 52,
-    fontSize: TYPOGRAPHY.fontSize.base,
-    color: COLORS.charcoal,
-  },
-  eyeButton: { padding: SPACING.xs },
-  eyeIcon: { fontSize: 18 },
-  errorText: {
-    fontSize: TYPOGRAPHY.fontSize.xs,
-    color: COLORS.error,
-    marginTop: 4,
-    marginLeft: 2,
-  },
-  forgotContainer: { alignSelf: 'flex-end', marginBottom: SPACING['2xl'] },
-  forgotText: {
-    fontSize: TYPOGRAPHY.fontSize.sm,
-    color: COLORS.primary,
-    fontWeight: '600',
-  },
-  loginButton: {
-    backgroundColor: COLORS.primary,
-    borderRadius: BORDER_RADIUS.md,
-    height: 54,
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...SHADOWS.md,
-  },
-  buttonDisabled: { opacity: 0.6 },
-  loginButtonText: {
-    fontSize: TYPOGRAPHY.fontSize.md,
-    fontWeight: '700',
-    color: COLORS.white,
-    letterSpacing: 0.5,
-  },
-  dividerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: SPACING.xl,
-    gap: SPACING.md,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: COLORS.lightGray,
-  },
-  dividerText: {
-    fontSize: TYPOGRAPHY.fontSize.sm,
-    color: COLORS.midGray,
-  },
-  googleButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: SPACING.md,
-    borderRadius: BORDER_RADIUS.md,
-    borderWidth: 1.5,
-    borderColor: COLORS.lightGray,
-    height: 54,
-    backgroundColor: COLORS.white,
-    ...SHADOWS.sm,
-  },
-  googleButtonDesktop: {
-    width: '100%' as unknown as number,
-  },
-  googleIcon: {
-    fontSize: TYPOGRAPHY.fontSize.lg,
-    fontWeight: '800',
-    color: '#4285F4',
-  },
-  googleButtonText: {
-    fontSize: TYPOGRAPHY.fontSize.base,
-    fontWeight: '600',
-    color: COLORS.charcoal,
-  },
-  registerRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    marginTop: SPACING['2xl'],
-  },
-  registerText: {
-    fontSize: TYPOGRAPHY.fontSize.sm,
-    color: COLORS.midGray,
-  },
-  registerLink: {
-    fontSize: TYPOGRAPHY.fontSize.sm,
-    color: COLORS.primary,
-    fontWeight: '700',
-  },
-});
+const getStyles = (colors: AppColors) =>
+  StyleSheet.create({
+    flex: { flex: 1, backgroundColor: colors.backgroundPrimary },
+    headerGradient: {
+      alignItems: 'center',
+      paddingTop: 60,
+      paddingBottom: SPACING['3xl'],
+    },
+    logoContainer: {
+      width: 56,
+      height: 56,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginBottom: SPACING.base,
+    },
+    crossVertical: {
+      position: 'absolute',
+      width: 10,
+      height: 56,
+      backgroundColor: colors.accent,
+      borderRadius: 5,
+    },
+    crossHorizontal: {
+      position: 'absolute',
+      width: 42,
+      height: 10,
+      backgroundColor: colors.accent,
+      borderRadius: 5,
+      top: 10,
+    },
+    brandName: {
+      fontSize: TYPOGRAPHY.fontSize['2xl'],
+      fontWeight: '800',
+      color: colors.white,
+      letterSpacing: 3,
+    },
+    brandTagline: {
+      fontSize: TYPOGRAPHY.fontSize.sm,
+      color: colors.accentLight,
+      marginTop: SPACING.xs,
+    },
+    formContainer: { flex: 1, backgroundColor: colors.backgroundPrimary },
+    formContent: {
+      paddingHorizontal: SPACING['2xl'],
+      paddingTop: SPACING['2xl'],
+      paddingBottom: SPACING['5xl'],
+    },
+    heading: {
+      fontSize: TYPOGRAPHY.fontSize['2xl'],
+      fontWeight: '700',
+      color: colors.textPrimary,
+      marginBottom: SPACING.xs,
+    },
+    subheading: {
+      fontSize: TYPOGRAPHY.fontSize.base,
+      color: colors.textSecondary,
+      marginBottom: SPACING['2xl'],
+    },
+    fieldGroup: { marginBottom: SPACING.lg },
+    label: {
+      fontSize: TYPOGRAPHY.fontSize.sm,
+      fontWeight: '600',
+      color: colors.textSecondary,
+      marginBottom: SPACING.xs,
+    },
+    inputWrapper: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: colors.backgroundCard,
+      borderRadius: BORDER_RADIUS.md,
+      borderWidth: 1.5,
+      borderColor: colors.border,
+      paddingHorizontal: SPACING.base,
+      ...SHADOWS.sm,
+    },
+    inputError: { borderColor: colors.danger },
+    input: {
+      flex: 1,
+      height: 52,
+      fontSize: TYPOGRAPHY.fontSize.base,
+      color: colors.textPrimary,
+    },
+    eyeButton: { padding: SPACING.xs },
+    eyeIcon: { fontSize: 18 },
+    errorText: {
+      fontSize: TYPOGRAPHY.fontSize.xs,
+      color: colors.danger,
+      marginTop: 4,
+      marginLeft: 2,
+    },
+    forgotContainer: { alignSelf: 'flex-end', marginBottom: SPACING['2xl'] },
+    forgotText: {
+      fontSize: TYPOGRAPHY.fontSize.sm,
+      color: colors.primary,
+      fontWeight: '600',
+    },
+    loginButton: {
+      backgroundColor: colors.primary,
+      borderRadius: BORDER_RADIUS.md,
+      height: 54,
+      alignItems: 'center',
+      justifyContent: 'center',
+      ...SHADOWS.md,
+    },
+    buttonDisabled: { opacity: 0.6 },
+    loginButtonText: {
+      fontSize: TYPOGRAPHY.fontSize.md,
+      fontWeight: '700',
+      color: colors.white,
+      letterSpacing: 0.5,
+    },
+    dividerRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginVertical: SPACING.xl,
+      gap: SPACING.md,
+    },
+    dividerLine: {
+      flex: 1,
+      height: 1,
+      backgroundColor: colors.border,
+    },
+    dividerText: {
+      fontSize: TYPOGRAPHY.fontSize.sm,
+      color: colors.textMuted,
+    },
+    googleButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: SPACING.md,
+      borderRadius: BORDER_RADIUS.md,
+      borderWidth: 1.5,
+      borderColor: colors.border,
+      height: 54,
+      backgroundColor: colors.backgroundCard,
+      ...SHADOWS.sm,
+    },
+    googleButtonDesktop: {
+      width: '100%' as unknown as number,
+    },
+    googleIcon: {
+      fontSize: TYPOGRAPHY.fontSize.lg,
+      fontWeight: '800',
+      color: '#4285F4',
+    },
+    googleButtonText: {
+      fontSize: TYPOGRAPHY.fontSize.base,
+      fontWeight: '600',
+      color: colors.textPrimary,
+    },
+    registerRow: {
+      flexDirection: 'row',
+      justifyContent: 'center',
+      marginTop: SPACING['2xl'],
+    },
+    registerText: {
+      fontSize: TYPOGRAPHY.fontSize.sm,
+      color: colors.textMuted,
+    },
+    registerLink: {
+      fontSize: TYPOGRAPHY.fontSize.sm,
+      color: colors.primary,
+      fontWeight: '700',
+    },
+  });
 
 // -----------------------------------------------------------------------
 // Desktop-only styles
 // -----------------------------------------------------------------------
-const desktopStyles = StyleSheet.create({
-  root: {
-    flex: 1,
-    flexDirection: 'row',
-    backgroundColor: COLORS.primary,
-  },
-  leftPanel: {
-    flex: 1,
-    maxWidth: 480,
-    backgroundColor: COLORS.white,
-    justifyContent: 'center',
-    overflow: 'hidden',
-  },
-  leftContent: {
-    paddingHorizontal: SPACING['3xl'],
-    paddingVertical: SPACING['3xl'],
-  },
-  rightPanel: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: SPACING['3xl'],
-  },
-  crossMotif: {
-    fontSize: 64,
-    color: COLORS.accent,
-    marginBottom: SPACING['2xl'],
-  },
-  brandName: {
-    fontSize: TYPOGRAPHY.fontSize['3xl'],
-    fontWeight: '800',
-    color: COLORS.white,
-    letterSpacing: 3,
-    marginBottom: SPACING.sm,
-  },
-  brandTagline: {
-    fontSize: TYPOGRAPHY.fontSize.md,
-    color: COLORS.accentLight,
-    marginBottom: SPACING['4xl'],
-  },
-  verseContainer: {
-    paddingHorizontal: SPACING['2xl'],
-    alignItems: 'center',
-    maxWidth: 420,
-  },
-  verseText: {
-    fontSize: TYPOGRAPHY.fontSize.lg,
-    color: COLORS.white,
-    textAlign: 'center',
-    fontStyle: 'italic',
-    lineHeight: TYPOGRAPHY.fontSize.lg * TYPOGRAPHY.lineHeight.relaxed,
-    marginBottom: SPACING.md,
-  },
-  verseRef: {
-    fontSize: TYPOGRAPHY.fontSize.sm,
-    color: COLORS.accentLight,
-    fontWeight: '600',
-  },
-  dotsRow: {
-    flexDirection: 'row',
-    gap: SPACING.sm,
-    marginTop: SPACING['3xl'],
-  },
-  dot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: 'rgba(255,255,255,0.25)',
-  },
-  dotActive: {
-    backgroundColor: COLORS.accent,
-    width: 24,
-  },
-});
+const getDesktopStyles = (colors: AppColors) =>
+  StyleSheet.create({
+    root: {
+      flex: 1,
+      flexDirection: 'row',
+      backgroundColor: colors.primary,
+    },
+    leftPanel: {
+      flex: 1,
+      maxWidth: 480,
+      backgroundColor: colors.backgroundPrimary,
+      justifyContent: 'center',
+      overflow: 'hidden',
+    },
+    leftContent: {
+      paddingHorizontal: SPACING['3xl'],
+      paddingVertical: SPACING['3xl'],
+    },
+    rightPanel: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      paddingHorizontal: SPACING['3xl'],
+    },
+    crossMotif: {
+      fontSize: 64,
+      color: colors.accent,
+      marginBottom: SPACING['2xl'],
+    },
+    brandName: {
+      fontSize: TYPOGRAPHY.fontSize['3xl'],
+      fontWeight: '800',
+      color: colors.white,
+      letterSpacing: 3,
+      marginBottom: SPACING.sm,
+    },
+    brandTagline: {
+      fontSize: TYPOGRAPHY.fontSize.md,
+      color: colors.accentLight,
+      marginBottom: SPACING['4xl'],
+    },
+    verseContainer: {
+      paddingHorizontal: SPACING['2xl'],
+      alignItems: 'center',
+      maxWidth: 420,
+    },
+    verseText: {
+      fontSize: TYPOGRAPHY.fontSize.lg,
+      color: colors.white,
+      textAlign: 'center',
+      fontStyle: 'italic',
+      lineHeight: TYPOGRAPHY.fontSize.lg * TYPOGRAPHY.lineHeight.relaxed,
+      marginBottom: SPACING.md,
+    },
+    verseRef: {
+      fontSize: TYPOGRAPHY.fontSize.sm,
+      color: colors.accentLight,
+      fontWeight: '600',
+    },
+    dotsRow: {
+      flexDirection: 'row',
+      gap: SPACING.sm,
+      marginTop: SPACING['3xl'],
+    },
+    dot: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+      backgroundColor: 'rgba(255,255,255,0.25)',
+    },
+    dotActive: {
+      backgroundColor: colors.accent,
+      width: 24,
+    },
+  });

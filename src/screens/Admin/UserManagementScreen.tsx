@@ -24,7 +24,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { Profile } from '../../types/database.types';
-import { COLORS, TYPOGRAPHY, SPACING, BORDER_RADIUS, SHADOWS } from '../../constants/theme';
+import { useTheme, AppColors } from '../../context/ThemeContext';
+import { TYPOGRAPHY, SPACING, BORDER_RADIUS, SHADOWS } from '../../constants/theme';
 
 interface UserCardProps {
   profile: Profile;
@@ -33,7 +34,10 @@ interface UserCardProps {
 }
 
 function UserCard({ profile, onViewPosts, onDeleteAllPosts }: UserCardProps): React.JSX.Element {
+  const { colors } = useTheme();
+  const styles = getStyles(colors);
   const isAdmin = profile.role === 'admin';
+
   return (
     <View style={styles.userCard}>
       <View style={styles.userRow}>
@@ -87,6 +91,8 @@ function UserCard({ profile, onViewPosts, onDeleteAllPosts }: UserCardProps): Re
 export default function AdminUserManagementScreen(): React.JSX.Element {
   const router = useRouter();
   const { role } = useAuth();
+  const { colors } = useTheme();
+  const styles = getStyles(colors);
 
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [filtered, setFiltered] = useState<Profile[]>([]);
@@ -197,9 +203,9 @@ export default function AdminUserManagementScreen(): React.JSX.Element {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={COLORS.primary} />
+      <StatusBar barStyle="light-content" backgroundColor={colors.primary} />
 
-      <LinearGradient colors={[COLORS.primary, COLORS.primaryDark]} style={styles.header}>
+      <LinearGradient colors={[colors.primary, colors.primaryDark]} style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <Text style={styles.backIcon}>←</Text>
         </TouchableOpacity>
@@ -214,11 +220,11 @@ export default function AdminUserManagementScreen(): React.JSX.Element {
           <Text style={styles.statLabel}>Total</Text>
         </View>
         <View style={styles.statChip}>
-          <Text style={[styles.statValue, { color: COLORS.success }]}>{stats.clients}</Text>
+          <Text style={[styles.statValue, { color: colors.success }]}>{stats.clients}</Text>
           <Text style={styles.statLabel}>Clients</Text>
         </View>
         <View style={styles.statChip}>
-          <Text style={[styles.statValue, { color: COLORS.accent }]}>{stats.admins}</Text>
+          <Text style={[styles.statValue, { color: colors.accent }]}>{stats.admins}</Text>
           <Text style={styles.statLabel}>Admins</Text>
         </View>
       </View>
@@ -231,7 +237,7 @@ export default function AdminUserManagementScreen(): React.JSX.Element {
           value={searchQuery}
           onChangeText={handleSearch}
           placeholder="Search by name or ID..."
-          placeholderTextColor={COLORS.midGray}
+          placeholderTextColor={colors.textMuted}
           autoCapitalize="none"
           clearButtonMode="while-editing"
         />
@@ -239,7 +245,7 @@ export default function AdminUserManagementScreen(): React.JSX.Element {
 
       {isLoading ? (
         <View style={styles.centered}>
-          <ActivityIndicator size="large" color={COLORS.primary} />
+          <ActivityIndicator size="large" color={colors.primary} />
           <Text style={styles.loadingText}>Loading users...</Text>
         </View>
       ) : (
@@ -253,8 +259,8 @@ export default function AdminUserManagementScreen(): React.JSX.Element {
             <RefreshControl
               refreshing={isRefreshing}
               onRefresh={handleRefresh}
-              tintColor={COLORS.primary}
-              colors={[COLORS.primary]}
+              tintColor={colors.primary}
+              colors={[colors.primary]}
             />
           }
           ListEmptyComponent={
@@ -271,84 +277,85 @@ export default function AdminUserManagementScreen(): React.JSX.Element {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.backgroundPrimary },
-  header: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingTop: 52, paddingBottom: SPACING.base, paddingHorizontal: SPACING.base,
-  },
-  backBtn: {
-    width: 40, height: 40, borderRadius: 20, backgroundColor: COLORS.overlayLight,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  backIcon: { fontSize: 20, color: COLORS.white, fontWeight: '700' },
-  headerTitle: {
-    flex: 1, fontSize: TYPOGRAPHY.fontSize.lg, fontWeight: '700',
-    color: COLORS.white, textAlign: 'center',
-  },
-  headerRight: { width: 40 },
-  statsBar: {
-    flexDirection: 'row', backgroundColor: COLORS.white,
-    paddingVertical: SPACING.md, paddingHorizontal: SPACING['2xl'],
-    borderBottomWidth: 1, borderBottomColor: COLORS.lightGray,
-    gap: SPACING['2xl'],
-  },
-  statChip: { alignItems: 'center' },
-  statValue: { fontSize: TYPOGRAPHY.fontSize.xl, fontWeight: '800', color: COLORS.charcoal },
-  statLabel: { fontSize: TYPOGRAPHY.fontSize.xs, color: COLORS.midGray, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
-  searchWrapper: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: COLORS.white, marginHorizontal: SPACING.base,
-    marginVertical: SPACING.md, borderRadius: BORDER_RADIUS.md,
-    borderWidth: 1.5, borderColor: COLORS.lightGray,
-    paddingHorizontal: SPACING.base, ...SHADOWS.sm,
-  },
-  searchIcon: { fontSize: 18, marginRight: SPACING.sm },
-  searchInput: {
-    flex: 1, height: 48, fontSize: TYPOGRAPHY.fontSize.base, color: COLORS.charcoal,
-  },
-  centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  loadingText: { marginTop: SPACING.md, fontSize: TYPOGRAPHY.fontSize.sm, color: COLORS.midGray },
-  listContent: { padding: SPACING.base, paddingBottom: SPACING['5xl'] },
-  userCard: {
-    backgroundColor: COLORS.white, borderRadius: BORDER_RADIUS.xl,
-    marginBottom: SPACING.base, overflow: 'hidden', ...SHADOWS.md,
-  },
-  userRow: { flexDirection: 'row', alignItems: 'center', padding: SPACING.base },
-  avatar: {
-    width: 52, height: 52, borderRadius: 26, backgroundColor: COLORS.primary,
-    alignItems: 'center', justifyContent: 'center', marginRight: SPACING.md, overflow: 'hidden',
-  },
-  avatarAdmin: { backgroundColor: COLORS.accent },
-  avatarImg: { width: 52, height: 52 },
-  avatarInitial: { color: COLORS.white, fontWeight: '800', fontSize: TYPOGRAPHY.fontSize.lg },
-  userInfo: { flex: 1 },
-  userNameRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginBottom: 2 },
-  userName: { fontSize: TYPOGRAPHY.fontSize.base, fontWeight: '700', color: COLORS.charcoal, flex: 1 },
-  roleBadge: {
-    backgroundColor: COLORS.lightGray, borderRadius: BORDER_RADIUS.full,
-    paddingHorizontal: 8, paddingVertical: 2,
-  },
-  roleBadgeAdmin: { backgroundColor: COLORS.accent },
-  roleBadgeText: { fontSize: 9, fontWeight: '800', color: COLORS.darkGray, letterSpacing: 0.5 },
-  roleBadgeTextAdmin: { color: COLORS.primary },
-  userId: { fontSize: TYPOGRAPHY.fontSize.xs, color: COLORS.midGray, fontFamily: 'monospace' },
-  joinDate: { fontSize: TYPOGRAPHY.fontSize.xs, color: COLORS.midGray, marginTop: 2 },
-  userActions: {
-    flexDirection: 'row', gap: SPACING.sm,
-    paddingHorizontal: SPACING.base, paddingBottom: SPACING.base,
-  },
-  actionBtn: {
-    flex: 1, backgroundColor: COLORS.offWhite, borderRadius: BORDER_RADIUS.md,
-    paddingVertical: SPACING.sm, alignItems: 'center', borderWidth: 1, borderColor: COLORS.lightGray,
-  },
-  actionBtnDanger: { backgroundColor: '#FFF0F0', borderColor: '#FFCDD2' },
-  actionBtnText: { fontSize: TYPOGRAPHY.fontSize.xs, fontWeight: '700', color: COLORS.darkGray },
-  actionBtnTextDanger: { color: COLORS.error },
-  emptyContainer: { alignItems: 'center', paddingTop: SPACING['5xl'] },
-  emptyEmoji: { fontSize: 48, marginBottom: SPACING.base },
-  emptyText: { fontSize: TYPOGRAPHY.fontSize.base, color: COLORS.midGray, textAlign: 'center' },
-  forbidden: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.backgroundPrimary },
-  forbiddenEmoji: { fontSize: 48, marginBottom: SPACING.base },
-  forbiddenText: { fontSize: TYPOGRAPHY.fontSize.lg, fontWeight: '700', color: COLORS.charcoal },
-});
+const getStyles = (colors: AppColors) =>
+  StyleSheet.create({
+    container: { flex: 1, backgroundColor: colors.backgroundPrimary },
+    header: {
+      flexDirection: 'row', alignItems: 'center',
+      paddingTop: 52, paddingBottom: SPACING.base, paddingHorizontal: SPACING.base,
+    },
+    backBtn: {
+      width: 40, height: 40, borderRadius: 20, backgroundColor: colors.overlayLight,
+      alignItems: 'center', justifyContent: 'center',
+    },
+    backIcon: { fontSize: 20, color: colors.white, fontWeight: '700' },
+    headerTitle: {
+      flex: 1, fontSize: TYPOGRAPHY.fontSize.lg, fontWeight: '700',
+      color: colors.white, textAlign: 'center',
+    },
+    headerRight: { width: 40 },
+    statsBar: {
+      flexDirection: 'row', backgroundColor: colors.backgroundCard,
+      paddingVertical: SPACING.md, paddingHorizontal: SPACING['2xl'],
+      borderBottomWidth: 1, borderBottomColor: colors.border,
+      gap: SPACING['2xl'],
+    },
+    statChip: { alignItems: 'center' },
+    statValue: { fontSize: TYPOGRAPHY.fontSize.xl, fontWeight: '800', color: colors.textPrimary },
+    statLabel: { fontSize: TYPOGRAPHY.fontSize.xs, color: colors.textMuted, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
+    searchWrapper: {
+      flexDirection: 'row', alignItems: 'center',
+      backgroundColor: colors.backgroundCard, marginHorizontal: SPACING.base,
+      marginVertical: SPACING.md, borderRadius: BORDER_RADIUS.md,
+      borderWidth: 1.5, borderColor: colors.border,
+      paddingHorizontal: SPACING.base, ...SHADOWS.sm,
+    },
+    searchIcon: { fontSize: 18, marginRight: SPACING.sm },
+    searchInput: {
+      flex: 1, height: 48, fontSize: TYPOGRAPHY.fontSize.base, color: colors.textPrimary,
+    },
+    centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+    loadingText: { marginTop: SPACING.md, fontSize: TYPOGRAPHY.fontSize.sm, color: colors.textMuted },
+    listContent: { padding: SPACING.base, paddingBottom: SPACING['5xl'] },
+    userCard: {
+      backgroundColor: colors.backgroundCard, borderRadius: BORDER_RADIUS.xl,
+      marginBottom: SPACING.base, overflow: 'hidden', ...SHADOWS.md,
+    },
+    userRow: { flexDirection: 'row', alignItems: 'center', padding: SPACING.base },
+    avatar: {
+      width: 52, height: 52, borderRadius: 26, backgroundColor: colors.primary,
+      alignItems: 'center', justifyContent: 'center', marginRight: SPACING.md, overflow: 'hidden',
+    },
+    avatarAdmin: { backgroundColor: colors.accent },
+    avatarImg: { width: 52, height: 52 },
+    avatarInitial: { color: colors.white, fontWeight: '800', fontSize: TYPOGRAPHY.fontSize.lg },
+    userInfo: { flex: 1 },
+    userNameRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginBottom: 2 },
+    userName: { fontSize: TYPOGRAPHY.fontSize.base, fontWeight: '700', color: colors.textPrimary, flex: 1 },
+    roleBadge: {
+      backgroundColor: colors.lightGray, borderRadius: BORDER_RADIUS.full,
+      paddingHorizontal: 8, paddingVertical: 2,
+    },
+    roleBadgeAdmin: { backgroundColor: colors.accent },
+    roleBadgeText: { fontSize: 9, fontWeight: '800', color: colors.textSecondary, letterSpacing: 0.5 },
+    roleBadgeTextAdmin: { color: colors.primary },
+    userId: { fontSize: TYPOGRAPHY.fontSize.xs, color: colors.textMuted, fontFamily: 'monospace' },
+    joinDate: { fontSize: TYPOGRAPHY.fontSize.xs, color: colors.textMuted, marginTop: 2 },
+    userActions: {
+      flexDirection: 'row', gap: SPACING.sm,
+      paddingHorizontal: SPACING.base, paddingBottom: SPACING.base,
+    },
+    actionBtn: {
+      flex: 1, backgroundColor: colors.backgroundPrimary, borderRadius: BORDER_RADIUS.md,
+      paddingVertical: SPACING.sm, alignItems: 'center', borderWidth: 1, borderColor: colors.border,
+    },
+    actionBtnDanger: { backgroundColor: '#FFF0F0', borderColor: '#FFCDD2' },
+    actionBtnText: { fontSize: TYPOGRAPHY.fontSize.xs, fontWeight: '700', color: colors.textSecondary },
+    actionBtnTextDanger: { color: colors.danger },
+    emptyContainer: { alignItems: 'center', paddingTop: SPACING['5xl'] },
+    emptyEmoji: { fontSize: 48, marginBottom: SPACING.base },
+    emptyText: { fontSize: TYPOGRAPHY.fontSize.base, color: colors.textMuted, textAlign: 'center' },
+    forbidden: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.backgroundPrimary },
+    forbiddenEmoji: { fontSize: 48, marginBottom: SPACING.base },
+    forbiddenText: { fontSize: TYPOGRAPHY.fontSize.lg, fontWeight: '700', color: colors.textPrimary },
+  });

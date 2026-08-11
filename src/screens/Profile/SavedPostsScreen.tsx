@@ -23,7 +23,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { HomeFeedPost, SavedPost } from '../../types/database.types';
-import { COLORS, TYPOGRAPHY, SPACING, BORDER_RADIUS, SHADOWS } from '../../constants/theme';
+import { useTheme, AppColors } from '../../context/ThemeContext';
+import { TYPOGRAPHY, SPACING, BORDER_RADIUS, SHADOWS } from '../../constants/theme';
 
 // -----------------------------------------------------------------------
 // Saved card component
@@ -35,6 +36,9 @@ interface SavedCardProps {
 }
 
 function SavedCard({ item, savedId, onUnsave }: SavedCardProps): React.JSX.Element {
+  const { colors } = useTheme();
+  const styles = getStyles(colors);
+
   return (
     <View style={styles.card}>
       <View style={styles.cardTypeBadge}>
@@ -87,6 +91,8 @@ interface SavedRow extends SavedPost {
 export default function SavedPostsScreen(): React.JSX.Element {
   const router = useRouter();
   const { user } = useAuth();
+  const { colors } = useTheme();
+  const styles = getStyles(colors);
 
   const [savedRows, setSavedRows] = useState<SavedRow[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -171,9 +177,9 @@ export default function SavedPostsScreen(): React.JSX.Element {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={COLORS.primary} />
+      <StatusBar barStyle="light-content" backgroundColor={colors.primary} />
 
-      <LinearGradient colors={[COLORS.primary, COLORS.primaryDark]} style={styles.header}>
+      <LinearGradient colors={[colors.primary, colors.primaryDark]} style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <Text style={styles.backIcon}>←</Text>
         </TouchableOpacity>
@@ -183,7 +189,7 @@ export default function SavedPostsScreen(): React.JSX.Element {
 
       {isLoading ? (
         <View style={styles.centered}>
-          <ActivityIndicator size="large" color={COLORS.primary} />
+          <ActivityIndicator size="large" color={colors.primary} />
           <Text style={styles.loadingText}>Loading saved posts...</Text>
         </View>
       ) : hasError ? (
@@ -205,8 +211,8 @@ export default function SavedPostsScreen(): React.JSX.Element {
             <RefreshControl
               refreshing={isRefreshing}
               onRefresh={handleRefresh}
-              tintColor={COLORS.primary}
-              colors={[COLORS.primary]}
+              tintColor={colors.primary}
+              colors={[colors.primary]}
             />
           }
           ListEmptyComponent={
@@ -224,86 +230,87 @@ export default function SavedPostsScreen(): React.JSX.Element {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.backgroundPrimary },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingTop: 52,
-    paddingBottom: SPACING.base,
-    paddingHorizontal: SPACING.base,
-  },
-  backBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: COLORS.overlayLight,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  backIcon: { fontSize: 20, color: COLORS.white, fontWeight: '700' },
-  headerTitle: {
-    flex: 1,
-    fontSize: TYPOGRAPHY.fontSize.lg,
-    fontWeight: '700',
-    color: COLORS.white,
-    textAlign: 'center',
-  },
-  headerRight: { width: 40 },
-  centered: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: SPACING['2xl'] },
-  loadingText: { marginTop: SPACING.md, fontSize: TYPOGRAPHY.fontSize.sm, color: COLORS.midGray },
-  errorEmoji: { fontSize: 40, marginBottom: SPACING.md },
-  errorText: { fontSize: TYPOGRAPHY.fontSize.base, color: COLORS.darkGray, textAlign: 'center', marginBottom: SPACING.md },
-  retryBtn: {
-    backgroundColor: COLORS.primary, paddingHorizontal: SPACING['2xl'],
-    paddingVertical: SPACING.md, borderRadius: BORDER_RADIUS.full,
-  },
-  retryBtnText: { color: COLORS.white, fontWeight: '700', fontSize: TYPOGRAPHY.fontSize.base },
-  listContent: { padding: SPACING.base, paddingBottom: SPACING['5xl'] },
-  card: {
-    backgroundColor: COLORS.white,
-    borderRadius: BORDER_RADIUS.xl,
-    marginBottom: SPACING.base,
-    overflow: 'hidden',
-    ...SHADOWS.md,
-  },
-  cardTypeBadge: {
-    backgroundColor: COLORS.primary,
-    paddingHorizontal: SPACING.base,
-    paddingVertical: SPACING.sm,
-  },
-  cardTypeText: { fontSize: TYPOGRAPHY.fontSize.xs, color: COLORS.white, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 1 },
-  cardImage: { width: '100%', height: 180 },
-  cardBody: { padding: SPACING.base },
-  cardTitle: { fontSize: TYPOGRAPHY.fontSize.md, fontWeight: '700', color: COLORS.charcoal, marginBottom: SPACING.xs },
-  cardBodyText: {
-    fontSize: TYPOGRAPHY.fontSize.base, color: COLORS.darkGray,
-    lineHeight: TYPOGRAPHY.fontSize.base * 1.6, marginBottom: SPACING.sm,
-  },
-  cardAuthor: { fontSize: TYPOGRAPHY.fontSize.sm, color: COLORS.primary, fontWeight: '600' },
-  cardFooter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: SPACING.base,
-    paddingVertical: SPACING.md,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.lightGray,
-  },
-  cardDate: { fontSize: TYPOGRAPHY.fontSize.xs, color: COLORS.midGray },
-  unsaveBtn: {
-    backgroundColor: COLORS.lightGray,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.xs,
-    borderRadius: BORDER_RADIUS.full,
-  },
-  unsaveBtnText: { fontSize: TYPOGRAPHY.fontSize.xs, color: COLORS.darkGray, fontWeight: '600' },
-  emptyContainer: {
-    alignItems: 'center',
-    paddingTop: SPACING['5xl'],
-    paddingHorizontal: SPACING['2xl'],
-  },
-  emptyEmoji: { fontSize: 56, marginBottom: SPACING['2xl'] },
-  emptyTitle: { fontSize: TYPOGRAPHY.fontSize.lg, fontWeight: '700', color: COLORS.charcoal, marginBottom: SPACING.sm },
-  emptySubtext: { fontSize: TYPOGRAPHY.fontSize.base, color: COLORS.midGray, textAlign: 'center', lineHeight: TYPOGRAPHY.fontSize.base * 1.6 },
-});
+const getStyles = (colors: AppColors) =>
+  StyleSheet.create({
+    container: { flex: 1, backgroundColor: colors.backgroundPrimary },
+    header: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingTop: 52,
+      paddingBottom: SPACING.base,
+      paddingHorizontal: SPACING.base,
+    },
+    backBtn: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      backgroundColor: colors.overlayLight,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    backIcon: { fontSize: 20, color: colors.white, fontWeight: '700' },
+    headerTitle: {
+      flex: 1,
+      fontSize: TYPOGRAPHY.fontSize.lg,
+      fontWeight: '700',
+      color: colors.white,
+      textAlign: 'center',
+    },
+    headerRight: { width: 40 },
+    centered: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: SPACING['2xl'] },
+    loadingText: { marginTop: SPACING.md, fontSize: TYPOGRAPHY.fontSize.sm, color: colors.textMuted },
+    errorEmoji: { fontSize: 40, marginBottom: SPACING.md },
+    errorText: { fontSize: TYPOGRAPHY.fontSize.base, color: colors.textSecondary, textAlign: 'center', marginBottom: SPACING.md },
+    retryBtn: {
+      backgroundColor: colors.primary, paddingHorizontal: SPACING['2xl'],
+      paddingVertical: SPACING.md, borderRadius: BORDER_RADIUS.full,
+    },
+    retryBtnText: { color: colors.white, fontWeight: '700', fontSize: TYPOGRAPHY.fontSize.base },
+    listContent: { padding: SPACING.base, paddingBottom: SPACING['5xl'] },
+    card: {
+      backgroundColor: colors.backgroundCard,
+      borderRadius: BORDER_RADIUS.xl,
+      marginBottom: SPACING.base,
+      overflow: 'hidden',
+      ...SHADOWS.md,
+    },
+    cardTypeBadge: {
+      backgroundColor: colors.primary,
+      paddingHorizontal: SPACING.base,
+      paddingVertical: SPACING.sm,
+    },
+    cardTypeText: { fontSize: TYPOGRAPHY.fontSize.xs, color: colors.white, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 1 },
+    cardImage: { width: '100%', height: 180 },
+    cardBody: { padding: SPACING.base },
+    cardTitle: { fontSize: TYPOGRAPHY.fontSize.md, fontWeight: '700', color: colors.textPrimary, marginBottom: SPACING.xs },
+    cardBodyText: {
+      fontSize: TYPOGRAPHY.fontSize.base, color: colors.textSecondary,
+      lineHeight: TYPOGRAPHY.fontSize.base * 1.6, marginBottom: SPACING.sm,
+    },
+    cardAuthor: { fontSize: TYPOGRAPHY.fontSize.sm, color: colors.primary, fontWeight: '600' },
+    cardFooter: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: SPACING.base,
+      paddingVertical: SPACING.md,
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
+    },
+    cardDate: { fontSize: TYPOGRAPHY.fontSize.xs, color: colors.textMuted },
+    unsaveBtn: {
+      backgroundColor: colors.lightGray,
+      paddingHorizontal: SPACING.md,
+      paddingVertical: SPACING.xs,
+      borderRadius: BORDER_RADIUS.full,
+    },
+    unsaveBtnText: { fontSize: TYPOGRAPHY.fontSize.xs, color: colors.textSecondary, fontWeight: '600' },
+    emptyContainer: {
+      alignItems: 'center',
+      paddingTop: SPACING['5xl'],
+      paddingHorizontal: SPACING['2xl'],
+    },
+    emptyEmoji: { fontSize: 56, marginBottom: SPACING['2xl'] },
+    emptyTitle: { fontSize: TYPOGRAPHY.fontSize.lg, fontWeight: '700', color: colors.textPrimary, marginBottom: SPACING.sm },
+    emptySubtext: { fontSize: TYPOGRAPHY.fontSize.base, color: colors.textMuted, textAlign: 'center', lineHeight: TYPOGRAPHY.fontSize.base * 1.6 },
+  });

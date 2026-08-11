@@ -6,7 +6,7 @@
 export type UserRole = 'client' | 'admin';
 export type ContentType = 'quote' | 'video' | 'verse';
 export type PaymentGateway = 'daraja' | 'paypal';
-export type PaymentStatus = 'pending' | 'success' | 'failed' | 'cancelled';
+export type PaymentStatus = 'pending' | 'success' | 'failed' | 'cancelled' | 'expired';
 
 // -----------------------------------------------------------------------
 // TABLE ROW TYPES
@@ -73,6 +73,15 @@ export type CommunityReaction = {
   post_id: string;
   user_id: string;
   created_at: string;
+};
+
+export type ProcessedWebhookLog = {
+  id: string;
+  gateway: 'daraja' | 'paypal';
+  event_id: string;
+  event_type: string;
+  result_code: number | null;
+  processed_at: string;
 };
 
 export type SavedPost = {
@@ -220,6 +229,56 @@ export interface DailyVerse {
   chapter: number;
   verse: number;
   fetchedAt: string;
+}
+
+export interface AOLabBook {
+  id:               string;  // e.g., 'GEN', 'JHN'
+  name:             string;  // e.g., 'Genesis'
+  commonName:       string;  // e.g., 'Genesis'
+  numberOfChapters: number;
+  testament:        'old' | 'new';  // derived: NT starts at 'MAT'
+}
+
+export type AOLabTextItem = string | { text?: string; poem?: number; lineBreak?: boolean; noteId?: number };
+
+export interface AOLabVerse {
+  type:    'verse';
+  number:  number;
+  content: AOLabTextItem[];
+}
+
+export interface AOLabHeading {
+  type:    'heading';
+  content: AOLabTextItem[];
+}
+
+export type AOLabContentItem = AOLabVerse | AOLabHeading | { type: 'line_break' };
+
+export interface AOLabApiChapterResponse {
+  translation: { id: string; name: string; shortName: string };
+  book: { id: string; name: string; commonName: string };
+  chapter: {
+    number: number;
+    content: AOLabContentItem[];
+  };
+  numberOfVerses: number;
+  previousChapterApiLink: string | null;
+  nextChapterApiLink: string | null;
+}
+
+export interface AOLabChapter {
+  book:    { id: string; name: string; commonName: string };
+  chapter: { number: number };
+  numberOfVerses: number;
+  previousChapterApiLink: string | null;
+  nextChapterApiLink:     string | null;
+  content: AOLabContentItem[];
+}
+
+export interface BiblePreferences {
+  translationId:  string;
+  selectedBookId: string | null;    // AOLabBook.id
+  selectedChapter: number | null;
 }
 
 // -----------------------------------------------------------------------

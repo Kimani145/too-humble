@@ -199,9 +199,9 @@ export default function AdminDashboard(): React.JSX.Element {
           <ActivityIndicator color={colors.accent} style={{ marginVertical: SPACING.xl }} />
         ) : (
           <View style={styles.statsRow}>
-            <StatCard label="Total Users" value={stats.users} emoji="👥" color={colors.info} colors={colors} />
+            <StatCard label="Total Users" value={stats.users} emoji="👥" color={colors.primaryLight} colors={colors} />
             <StatCard label="Posts" value={stats.posts} emoji="📝" color={colors.success} colors={colors} />
-            <StatCard label="Flagged" value={stats.flagged} emoji="🚩" color={colors.error} colors={colors} />
+            <StatCard label="Flagged" value={stats.flagged} emoji="🚩" color={colors.danger} colors={colors} />
             <StatCard label="Feed Items" value={stats.feed} emoji="📌" color={colors.accent} colors={colors} />
           </View>
         )}

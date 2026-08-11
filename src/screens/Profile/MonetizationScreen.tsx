@@ -15,9 +15,12 @@ import {
   createPayPalOrder,
   initiateMpesaSTKPush,
   getUserLedger,
+  getPendingMpesaTransaction,
+  retryMpesaSTKPush,
 } from '../../services/paymentService';
 import { MonetizationLedger } from '../../types/database.types';
-import { COLORS, TYPOGRAPHY, SPACING, BORDER_RADIUS, SHADOWS } from '../../constants/theme';
+import { useTheme, AppColors } from '../../context/ThemeContext';
+import { TYPOGRAPHY, SPACING, BORDER_RADIUS, SHADOWS } from '../../constants/theme';
 
 const PAYPAL_PRESET_USD: number[] = [1, 5, 10, 25, 50];
 const MPESA_PRESET_KES: number[] = [50, 100, 250, 500, 1000];
@@ -28,6 +31,8 @@ type GatewayTab = 'paypal' | 'mpesa';
 
 export default function MonetizationScreen(): React.JSX.Element {
   const { user } = useAuth();
+  const { colors } = useTheme();
+  const styles = getStyles(colors);
 
   const [activeTab, setActiveTab] = useState<GatewayTab>('paypal');
 
@@ -42,6 +47,10 @@ export default function MonetizationScreen(): React.JSX.Element {
   const [mpesaAmount, setMpesaAmount] = useState<string>('');
   const [mpesaPhone, setMpesaPhone] = useState<string>('');
   const [isMpesaProcessing, setIsMpesaProcessing] = useState<boolean>(false);
+
+  // Pending payment banner
+  const [pendingTx, setPendingTx] = useState<MonetizationLedger | null>(null);
+  const [isRetrying, setIsRetrying] = useState<boolean>(false);
 
   // Ledger
   const [ledger, setLedger] = useState<MonetizationLedger[]>([]);
@@ -60,7 +69,50 @@ export default function MonetizationScreen(): React.JSX.Element {
     }
   }, [user]);
 
-  useEffect(() => { fetchLedger(); }, [fetchLedger]);
+  const checkPendingTransaction = useCallback(async (): Promise<void> => {
+    if (!user) return;
+    const pending = await getPendingMpesaTransaction(user.id);
+    setPendingTx(pending);
+  }, [user]);
+
+  useEffect(() => {
+    fetchLedger();
+    checkPendingTransaction();
+  }, [fetchLedger, checkPendingTransaction]);
+
+  // ----------------------------------------------------------------
+  // Retry handler — re-initiates STK Push for a stuck pending transaction
+  // ----------------------------------------------------------------
+  const handleRetryPendingPayment = useCallback(async (): Promise<void> => {
+    if (!pendingTx || !user) return;
+    const phone = pendingTx.phone_number ?? mpesaPhone.trim();
+    if (!phone) {
+      Alert.alert('Phone Required', 'Enter your M-Pesa number to retry.');
+      return;
+    }
+
+    setIsRetrying(true);
+    try {
+      const result = await retryMpesaSTKPush({
+        userId: user.id,
+        phoneNumber: phone,
+        amount: Number(pendingTx.amount),
+      });
+      if (result.success) {
+        Alert.alert(
+          'Retry Sent 📱',
+          `A new M-Pesa prompt has been sent to ${phone}.\n\nRef: ${result.referenceId}`,
+          [{ text: 'OK', onPress: () => { void fetchLedger(); void checkPendingTransaction(); } }]
+        );
+      } else {
+        Alert.alert('Retry Failed', result.errorMessage ?? 'STK Push failed.');
+      }
+    } catch (err: unknown) {
+      Alert.alert('Error', err instanceof Error ? err.message : 'Retry failed.');
+    } finally {
+      setIsRetrying(false);
+    }
+  }, [pendingTx, user, mpesaPhone, fetchLedger, checkPendingTransaction]);
 
   // ----------------------------------------------------------------
   // PayPal flow (server-side order creation via Edge Function)
@@ -134,21 +186,47 @@ export default function MonetizationScreen(): React.JSX.Element {
   // Helpers
   // ----------------------------------------------------------------
   const statusColor = (status: string): string => {
-    if (status === 'success') return COLORS.success;
-    if (status === 'failed') return COLORS.error;
-    if (status === 'cancelled') return COLORS.midGray;
-    return COLORS.warning;
+    if (status === 'success')  return colors.success;
+    if (status === 'failed')   return colors.danger;
+    if (status === 'cancelled') return colors.textMuted;
+    if (status === 'expired')  return colors.textMuted;
+    return colors.warning; // pending
   };
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={COLORS.primary} />
-      <LinearGradient colors={[COLORS.primary, COLORS.primaryDark]} style={styles.header}>
+      <StatusBar barStyle="light-content" backgroundColor={colors.primary} />
+      <LinearGradient colors={[colors.primary, colors.primaryDark]} style={styles.header}>
         <Text style={styles.headerTitle}>☕ Buy Me a Coffee</Text>
         <Text style={styles.headerSub}>Your generosity keeps this ministry alive 🙏</Text>
       </LinearGradient>
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+
+        {/* Pending Payment Banner */}
+        {pendingTx && (
+          <View style={styles.pendingBanner}>
+            <View style={styles.pendingBannerLeft}>
+              <Text style={styles.pendingBannerTitle}>⏳ Incomplete M-Pesa Payment</Text>
+              <Text style={styles.pendingBannerSub}>
+                KES {Number(pendingTx.amount).toFixed(0)} initiated —{' '}
+                {pendingTx.phone_number ?? 'unknown number'}.
+                {' '}Waiting for M-Pesa confirmation.
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={[styles.retryBtn, isRetrying && styles.retryBtnDisabled]}
+              onPress={() => void handleRetryPendingPayment()}
+              disabled={isRetrying}
+              activeOpacity={0.85}
+            >
+              {isRetrying
+                ? <ActivityIndicator color={colors.white} size="small" />
+                : <Text style={styles.retryBtnText}>Retry</Text>
+              }
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* Gateway tabs */}
         <View style={styles.tabRow}>
@@ -194,7 +272,7 @@ export default function MonetizationScreen(): React.JSX.Element {
               value={paypalAmount}
               onChangeText={setPaypalAmount}
               placeholder="Or type custom amount"
-              placeholderTextColor={COLORS.midGray}
+              placeholderTextColor={colors.textMuted}
               keyboardType="numeric"
             />
             <Text style={styles.helperText}>Secure payment via PayPal. Minimum $1 USD.</Text>
@@ -206,7 +284,7 @@ export default function MonetizationScreen(): React.JSX.Element {
               activeOpacity={0.85}
             >
               {isPaypalProcessing
-                ? <ActivityIndicator color={COLORS.white} />
+                ? <ActivityIndicator color={colors.white} />
                 : <Text style={styles.payBtnText}>🌐 Pay with PayPal</Text>
               }
             </TouchableOpacity>
@@ -235,7 +313,7 @@ export default function MonetizationScreen(): React.JSX.Element {
               value={mpesaAmount}
               onChangeText={setMpesaAmount}
               placeholder="Or type custom amount (KES)"
-              placeholderTextColor={COLORS.midGray}
+              placeholderTextColor={colors.textMuted}
               keyboardType="numeric"
             />
             <Text style={styles.label} numberOfLines={1}>M-Pesa Phone Number</Text>
@@ -244,7 +322,7 @@ export default function MonetizationScreen(): React.JSX.Element {
               value={mpesaPhone}
               onChangeText={setMpesaPhone}
               placeholder="254712345678"
-              placeholderTextColor={COLORS.midGray}
+              placeholderTextColor={colors.textMuted}
               keyboardType="phone-pad"
               maxLength={12}
             />
@@ -257,7 +335,7 @@ export default function MonetizationScreen(): React.JSX.Element {
               activeOpacity={0.85}
             >
               {isMpesaProcessing
-                ? <ActivityIndicator color={COLORS.white} />
+                ? <ActivityIndicator color={colors.white} />
                 : <Text style={styles.payBtnText}>📱 Pay with M-Pesa 🇰🇪</Text>
               }
             </TouchableOpacity>
@@ -267,7 +345,7 @@ export default function MonetizationScreen(): React.JSX.Element {
         {/* Transaction history */}
         <Text style={styles.sectionTitle}>Transaction History</Text>
         {isLoadingLedger ? (
-          <ActivityIndicator color={COLORS.primary} style={{ marginVertical: SPACING.xl }} />
+          <ActivityIndicator color={colors.primary} style={{ marginVertical: SPACING.xl }} />
         ) : ledger.length === 0 ? (
           <Text style={styles.emptyText}>No transactions yet. Your giving history will appear here.</Text>
         ) : (
@@ -304,7 +382,7 @@ export default function MonetizationScreen(): React.JSX.Element {
             source={{ uri: paypalUrl }}
             onNavigationStateChange={(state) => handleWebViewNav(state.url)}
             startInLoadingState
-            renderLoading={() => <ActivityIndicator style={StyleSheet.absoluteFill} color={COLORS.primary} />}
+            renderLoading={() => <ActivityIndicator style={StyleSheet.absoluteFill} color={colors.primary} />}
           />
         </View>
       </Modal>
@@ -312,65 +390,85 @@ export default function MonetizationScreen(): React.JSX.Element {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.backgroundPrimary },
-  header: { paddingTop: 52, paddingBottom: SPACING.xl, paddingHorizontal: SPACING.base },
-  headerTitle: { fontSize: TYPOGRAPHY.fontSize['2xl'], fontWeight: '800', color: COLORS.white },
-  headerSub: { fontSize: TYPOGRAPHY.fontSize.sm, color: COLORS.accentLight, marginTop: 4 },
-  content: { padding: SPACING.base, paddingBottom: SPACING['5xl'] },
-  tabRow: { flexDirection: 'row', marginBottom: SPACING.base, gap: SPACING.sm },
-  tab: {
-    flex: 1, paddingVertical: SPACING.md, borderRadius: BORDER_RADIUS.md, alignItems: 'center',
-    backgroundColor: COLORS.white, borderWidth: 1.5, borderColor: COLORS.lightGray, ...SHADOWS.sm,
-  },
-  tabActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
-  tabText: { fontSize: TYPOGRAPHY.fontSize.sm, fontWeight: '700', color: COLORS.darkGray },
-  tabTextActive: { color: COLORS.white },
-  panel: {
-    backgroundColor: COLORS.white, borderRadius: BORDER_RADIUS.xl, padding: SPACING.base,
-    marginBottom: SPACING['2xl'], ...SHADOWS.md,
-  },
-  label: { fontSize: TYPOGRAPHY.fontSize.sm, fontWeight: '600', color: COLORS.darkGray, marginBottom: SPACING.sm },
-  presetsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm, marginBottom: SPACING.md },
-  preset: {
-    paddingHorizontal: SPACING.base, paddingVertical: SPACING.sm,
-    borderRadius: BORDER_RADIUS.full, borderWidth: 1.5, borderColor: COLORS.lightGray,
-    backgroundColor: COLORS.white,
-  },
-  presetActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
-  presetText: { fontSize: TYPOGRAPHY.fontSize.sm, fontWeight: '700', color: COLORS.darkGray },
-  presetTextActive: { color: COLORS.white },
-  amountInput: {
-    backgroundColor: COLORS.offWhite, borderWidth: 1.5, borderColor: COLORS.lightGray,
-    borderRadius: BORDER_RADIUS.md, padding: SPACING.base, fontSize: TYPOGRAPHY.fontSize.base,
-    color: COLORS.charcoal, marginBottom: SPACING.sm, ...SHADOWS.sm,
-  },
-  helperText: { fontSize: TYPOGRAPHY.fontSize.xs, color: COLORS.midGray, marginBottom: SPACING.md },
-  payBtn: {
-    backgroundColor: COLORS.primary, borderRadius: BORDER_RADIUS.md, height: 56,
-    alignItems: 'center', justifyContent: 'center', ...SHADOWS.md,
-  },
-  payBtnMpesa: { backgroundColor: '#007A3D' }, // Safaricom green
-  payBtnDisabled: { opacity: 0.6 },
-  payBtnText: { color: COLORS.white, fontSize: TYPOGRAPHY.fontSize.md, fontWeight: '700' },
-  sectionTitle: { fontSize: TYPOGRAPHY.fontSize.md, fontWeight: '700', color: COLORS.charcoal, marginBottom: SPACING.md },
-  txRow: {
-    flexDirection: 'row', backgroundColor: COLORS.white, borderRadius: BORDER_RADIUS.lg,
-    padding: SPACING.md, marginBottom: SPACING.sm, alignItems: 'center', ...SHADOWS.sm,
-  },
-  txLeft: { flex: 1 },
-  txLabel: { fontSize: TYPOGRAPHY.fontSize.sm, fontWeight: '700', color: COLORS.charcoal },
-  txRef: { fontSize: TYPOGRAPHY.fontSize.xs, color: COLORS.midGray, marginTop: 2 },
-  txDate: { fontSize: TYPOGRAPHY.fontSize.xs, color: COLORS.midGray, marginTop: 2 },
-  txRight: { alignItems: 'flex-end' },
-  txAmount: { fontSize: TYPOGRAPHY.fontSize.base, fontWeight: '700', color: COLORS.charcoal },
-  txStatus: { fontSize: TYPOGRAPHY.fontSize.xs, fontWeight: '700', marginTop: 2 },
-  emptyText: { color: COLORS.midGray, textAlign: 'center', paddingVertical: SPACING.xl },
-  webViewContainer: { flex: 1, backgroundColor: COLORS.white },
-  webViewHeader: {
-    flexDirection: 'row', alignItems: 'center', paddingTop: 52, paddingHorizontal: SPACING.base,
-    paddingBottom: SPACING.md, borderBottomWidth: 1, borderBottomColor: COLORS.lightGray,
-  },
-  webViewClose: { color: COLORS.error, fontWeight: '600', fontSize: TYPOGRAPHY.fontSize.base, marginRight: SPACING.xl },
-  webViewTitle: { fontSize: TYPOGRAPHY.fontSize.md, fontWeight: '700', color: COLORS.charcoal },
-});
+const getStyles = (colors: AppColors) =>
+  StyleSheet.create({
+    container: { flex: 1, backgroundColor: colors.backgroundPrimary },
+    header: { paddingTop: 52, paddingBottom: SPACING.xl, paddingHorizontal: SPACING.base },
+    headerTitle: { fontSize: TYPOGRAPHY.fontSize['2xl'], fontWeight: '800', color: colors.white },
+    headerSub: { fontSize: TYPOGRAPHY.fontSize.sm, color: colors.accentLight, marginTop: 4 },
+    content: { padding: SPACING.base, paddingBottom: SPACING['5xl'] },
+    tabRow: { flexDirection: 'row', marginBottom: SPACING.base, gap: SPACING.sm },
+    tab: {
+      flex: 1, paddingVertical: SPACING.md, borderRadius: BORDER_RADIUS.md, alignItems: 'center',
+      backgroundColor: colors.backgroundCard, borderWidth: 1.5, borderColor: colors.border, ...SHADOWS.sm,
+    },
+    tabActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+    tabText: { fontSize: TYPOGRAPHY.fontSize.sm, fontWeight: '700', color: colors.textSecondary },
+    tabTextActive: { color: colors.white },
+    panel: {
+      backgroundColor: colors.backgroundCard, borderRadius: BORDER_RADIUS.xl, padding: SPACING.base,
+      marginBottom: SPACING['2xl'], ...SHADOWS.md,
+    },
+    label: { fontSize: TYPOGRAPHY.fontSize.sm, fontWeight: '600', color: colors.textSecondary, marginBottom: SPACING.sm },
+    presetsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm, marginBottom: SPACING.md },
+    preset: {
+      paddingHorizontal: SPACING.base, paddingVertical: SPACING.sm,
+      borderRadius: BORDER_RADIUS.full, borderWidth: 1.5, borderColor: colors.border,
+      backgroundColor: colors.backgroundCard,
+    },
+    presetActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+    presetText: { fontSize: TYPOGRAPHY.fontSize.sm, fontWeight: '700', color: colors.textSecondary },
+    presetTextActive: { color: colors.white },
+    amountInput: {
+      backgroundColor: colors.backgroundPrimary, borderWidth: 1.5, borderColor: colors.border,
+      borderRadius: BORDER_RADIUS.md, padding: SPACING.base, fontSize: TYPOGRAPHY.fontSize.base,
+      color: colors.textPrimary, marginBottom: SPACING.sm, ...SHADOWS.sm,
+    },
+    helperText: { fontSize: TYPOGRAPHY.fontSize.xs, color: colors.textMuted, marginBottom: SPACING.md },
+    payBtn: {
+      backgroundColor: colors.primary, borderRadius: BORDER_RADIUS.md, height: 56,
+      alignItems: 'center', justifyContent: 'center', ...SHADOWS.md,
+    },
+    payBtnMpesa: { backgroundColor: '#007A3D' }, // Safaricom green
+    payBtnDisabled: { opacity: 0.6 },
+    payBtnText: { color: colors.white, fontSize: TYPOGRAPHY.fontSize.md, fontWeight: '700' },
+    sectionTitle: { fontSize: TYPOGRAPHY.fontSize.md, fontWeight: '700', color: colors.textPrimary, marginBottom: SPACING.md },
+    txRow: {
+      flexDirection: 'row', backgroundColor: colors.backgroundCard, borderRadius: BORDER_RADIUS.lg,
+      padding: SPACING.md, marginBottom: SPACING.sm, alignItems: 'center', ...SHADOWS.sm,
+    },
+    txLeft: { flex: 1 },
+    txLabel: { fontSize: TYPOGRAPHY.fontSize.sm, fontWeight: '700', color: colors.textPrimary },
+    txRef: { fontSize: TYPOGRAPHY.fontSize.xs, color: colors.textMuted, marginTop: 2 },
+    txDate: { fontSize: TYPOGRAPHY.fontSize.xs, color: colors.textMuted, marginTop: 2 },
+    txRight: { alignItems: 'flex-end' },
+    txAmount: { fontSize: TYPOGRAPHY.fontSize.base, fontWeight: '700', color: colors.textPrimary },
+    txStatus: { fontSize: TYPOGRAPHY.fontSize.xs, fontWeight: '700', marginTop: 2 },
+    emptyText: { color: colors.textMuted, textAlign: 'center', paddingVertical: SPACING.xl },
+    webViewContainer: { flex: 1, backgroundColor: colors.backgroundPrimary },
+    webViewHeader: {
+      flexDirection: 'row', alignItems: 'center', paddingTop: 52, paddingHorizontal: SPACING.base,
+      paddingBottom: SPACING.md, borderBottomWidth: 1, borderBottomColor: colors.border,
+    },
+    webViewClose: { color: colors.danger, fontWeight: '600', fontSize: TYPOGRAPHY.fontSize.base, marginRight: SPACING.xl },
+    webViewTitle: { fontSize: TYPOGRAPHY.fontSize.md, fontWeight: '700', color: colors.textPrimary },
+    // Pending payment banner
+    pendingBanner: {
+      flexDirection: 'row', alignItems: 'center',
+      backgroundColor: '#7C3AED15', borderWidth: 1.5, borderColor: '#7C3AED',
+      borderRadius: BORDER_RADIUS.lg, padding: SPACING.md,
+      marginBottom: SPACING.base, gap: SPACING.sm,
+    },
+    pendingBannerLeft: { flex: 1 },
+    pendingBannerTitle: {
+      fontSize: TYPOGRAPHY.fontSize.sm, fontWeight: '700',
+      color: '#7C3AED', marginBottom: 2,
+    },
+    pendingBannerSub: { fontSize: TYPOGRAPHY.fontSize.xs, color: colors.textSecondary, lineHeight: 16 },
+    retryBtn: {
+      backgroundColor: '#7C3AED', borderRadius: BORDER_RADIUS.md,
+      paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, minWidth: 60, alignItems: 'center',
+    },
+    retryBtnDisabled: { opacity: 0.6 },
+    retryBtnText: { color: colors.white, fontSize: TYPOGRAPHY.fontSize.xs, fontWeight: '700' },
+  });

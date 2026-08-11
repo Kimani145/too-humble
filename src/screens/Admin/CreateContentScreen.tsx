@@ -22,7 +22,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { ContentType, HomeFeedInsert } from '../../types/database.types';
-import { COLORS, TYPOGRAPHY, SPACING, BORDER_RADIUS, SHADOWS } from '../../constants/theme';
+import { useTheme, AppColors } from '../../context/ThemeContext';
+import { TYPOGRAPHY, SPACING, BORDER_RADIUS, SHADOWS } from '../../constants/theme';
 
 const CONTENT_TYPES: Array<{ type: ContentType; label: string; icon: string; hint: string }> = [
   { type: 'verse', label: 'Scripture Verse', icon: '📖', hint: 'Daily scripture or devotional text' },
@@ -38,6 +39,8 @@ function validateMediaUrl(url: string): boolean {
 export default function AdminCreateContentScreen(): React.JSX.Element {
   const router = useRouter();
   const { user, role } = useAuth();
+  const { colors } = useTheme();
+  const styles = getStyles(colors);
 
   const [selectedType, setSelectedType] = useState<ContentType>('verse');
   const [title, setTitle] = useState<string>('');
@@ -109,9 +112,9 @@ export default function AdminCreateContentScreen(): React.JSX.Element {
       style={styles.flex}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
-      <StatusBar barStyle="light-content" backgroundColor={COLORS.primary} />
+      <StatusBar barStyle="light-content" backgroundColor={colors.primary} />
 
-      <LinearGradient colors={[COLORS.primary, COLORS.primaryDark]} style={styles.header}>
+      <LinearGradient colors={[colors.primary, colors.primaryDark]} style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <Text style={styles.backIcon}>←</Text>
         </TouchableOpacity>
@@ -126,7 +129,7 @@ export default function AdminCreateContentScreen(): React.JSX.Element {
       >
         {/* Content type selector */}
         <Text style={styles.sectionLabel}>Content Type</Text>
-        <View style={styles.typeRow}>
+        <View style={typeStyles.typeRow}>
           {CONTENT_TYPES.map(({ type, label, icon }) => (
             <TouchableOpacity
               key={type}
@@ -153,7 +156,7 @@ export default function AdminCreateContentScreen(): React.JSX.Element {
           value={title}
           onChangeText={(t) => { setTitle(t); if (errors.title) setErrors((p) => ({ ...p, title: null })); }}
           placeholder="Enter a clear, meaningful title..."
-          placeholderTextColor={COLORS.midGray}
+          placeholderTextColor={colors.textMuted}
           maxLength={255}
           editable={!isSubmitting}
         />
@@ -167,7 +170,7 @@ export default function AdminCreateContentScreen(): React.JSX.Element {
           value={bodyText}
           onChangeText={setBodyText}
           placeholder="Scripture text, quote body, or description..."
-          placeholderTextColor={COLORS.midGray}
+          placeholderTextColor={colors.textMuted}
           multiline
           textAlignVertical="top"
           editable={!isSubmitting}
@@ -180,7 +183,7 @@ export default function AdminCreateContentScreen(): React.JSX.Element {
           value={authorRef}
           onChangeText={(t) => { if (t.length <= 150) setAuthorRef(t); }}
           placeholder="e.g. John 3:16 or — C.S. Lewis"
-          placeholderTextColor={COLORS.midGray}
+          placeholderTextColor={colors.textMuted}
           maxLength={150}
           editable={!isSubmitting}
         />
@@ -192,7 +195,7 @@ export default function AdminCreateContentScreen(): React.JSX.Element {
           value={mediaUrl}
           onChangeText={(t) => { setMediaUrl(t); if (errors.mediaUrl) setErrors((p) => ({ ...p, mediaUrl: null })); }}
           placeholder="https://..."
-          placeholderTextColor={COLORS.midGray}
+          placeholderTextColor={colors.textMuted}
           autoCapitalize="none"
           keyboardType="url"
           editable={!isSubmitting}
@@ -207,7 +210,7 @@ export default function AdminCreateContentScreen(): React.JSX.Element {
           activeOpacity={0.85}
         >
           {isSubmitting ? (
-            <ActivityIndicator color={COLORS.white} />
+            <ActivityIndicator color={colors.white} />
           ) : (
             <Text style={styles.publishBtnText}>🚀 Publish to Home Feed</Text>
           )}
@@ -217,58 +220,62 @@ export default function AdminCreateContentScreen(): React.JSX.Element {
   );
 }
 
-const styles = StyleSheet.create({
-  flex: { flex: 1, backgroundColor: COLORS.backgroundPrimary },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingTop: 52,
-    paddingBottom: SPACING.base,
-    paddingHorizontal: SPACING.base,
-  },
-  backBtn: {
-    width: 40, height: 40, borderRadius: 20, backgroundColor: COLORS.overlayLight,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  backIcon: { fontSize: 20, color: COLORS.white, fontWeight: '700' },
-  headerTitle: {
-    flex: 1, fontSize: TYPOGRAPHY.fontSize.lg, fontWeight: '700',
-    color: COLORS.white, textAlign: 'center',
-  },
-  headerRight: { width: 40 },
-  content: { padding: SPACING.base, paddingBottom: SPACING['5xl'] },
-  sectionLabel: {
-    fontSize: TYPOGRAPHY.fontSize.sm, fontWeight: '700', color: COLORS.midGray,
-    textTransform: 'uppercase', letterSpacing: 1, marginBottom: SPACING.md,
-  },
+const typeStyles = StyleSheet.create({
   typeRow: { flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.sm },
-  typeBtn: {
-    flex: 1, alignItems: 'center', padding: SPACING.md, borderRadius: BORDER_RADIUS.lg,
-    backgroundColor: COLORS.white, borderWidth: 1.5, borderColor: COLORS.lightGray, ...SHADOWS.sm,
-  },
-  typeBtnActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
-  typeBtnIcon: { fontSize: 24, marginBottom: 4 },
-  typeBtnLabel: { fontSize: TYPOGRAPHY.fontSize.xs, fontWeight: '600', color: COLORS.darkGray, textAlign: 'center' },
-  typeBtnLabelActive: { color: COLORS.white },
-  typeHint: { fontSize: TYPOGRAPHY.fontSize.xs, color: COLORS.midGray, marginBottom: SPACING['2xl'], textAlign: 'center' },
-  fieldLabel: { fontSize: TYPOGRAPHY.fontSize.sm, fontWeight: '600', color: COLORS.darkGray, marginBottom: SPACING.xs, marginTop: SPACING.base },
-  required: { color: COLORS.error },
-  input: {
-    backgroundColor: COLORS.white, borderWidth: 1.5, borderColor: COLORS.lightGray,
-    borderRadius: BORDER_RADIUS.md, padding: SPACING.base,
-    fontSize: TYPOGRAPHY.fontSize.base, color: COLORS.charcoal, ...SHADOWS.sm,
-  },
-  textArea: { minHeight: 120, textAlignVertical: 'top' },
-  inputError: { borderColor: COLORS.error },
-  errorText: { fontSize: TYPOGRAPHY.fontSize.xs, color: COLORS.error, marginTop: 4, marginLeft: 2 },
-  charCount: { fontSize: TYPOGRAPHY.fontSize.xs, color: COLORS.midGray, textAlign: 'right', marginTop: 4 },
-  publishBtn: {
-    backgroundColor: COLORS.primary, borderRadius: BORDER_RADIUS.md, height: 56,
-    alignItems: 'center', justifyContent: 'center', marginTop: SPACING['2xl'], ...SHADOWS.md,
-  },
-  publishBtnDisabled: { opacity: 0.6 },
-  publishBtnText: { color: COLORS.white, fontSize: TYPOGRAPHY.fontSize.md, fontWeight: '700' },
-  forbidden: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.backgroundPrimary },
-  forbiddenEmoji: { fontSize: 48, marginBottom: SPACING.base },
-  forbiddenText: { fontSize: TYPOGRAPHY.fontSize.lg, fontWeight: '700', color: COLORS.charcoal },
 });
+
+const getStyles = (colors: AppColors) =>
+  StyleSheet.create({
+    flex: { flex: 1, backgroundColor: colors.backgroundPrimary },
+    header: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingTop: 52,
+      paddingBottom: SPACING.base,
+      paddingHorizontal: SPACING.base,
+    },
+    backBtn: {
+      width: 40, height: 40, borderRadius: 20, backgroundColor: colors.overlayLight,
+      alignItems: 'center', justifyContent: 'center',
+    },
+    backIcon: { fontSize: 20, color: colors.white, fontWeight: '700' },
+    headerTitle: {
+      flex: 1, fontSize: TYPOGRAPHY.fontSize.lg, fontWeight: '700',
+      color: colors.white, textAlign: 'center',
+    },
+    headerRight: { width: 40 },
+    content: { padding: SPACING.base, paddingBottom: SPACING['5xl'] },
+    sectionLabel: {
+      fontSize: TYPOGRAPHY.fontSize.sm, fontWeight: '700', color: colors.textMuted,
+      textTransform: 'uppercase', letterSpacing: 1, marginBottom: SPACING.md,
+    },
+    typeBtn: {
+      flex: 1, alignItems: 'center', padding: SPACING.md, borderRadius: BORDER_RADIUS.lg,
+      backgroundColor: colors.backgroundCard, borderWidth: 1.5, borderColor: colors.border, ...SHADOWS.sm,
+    },
+    typeBtnActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+    typeBtnIcon: { fontSize: 24, marginBottom: 4 },
+    typeBtnLabel: { fontSize: TYPOGRAPHY.fontSize.xs, fontWeight: '600', color: colors.textSecondary, textAlign: 'center' },
+    typeBtnLabelActive: { color: colors.white },
+    typeHint: { fontSize: TYPOGRAPHY.fontSize.xs, color: colors.textMuted, marginBottom: SPACING['2xl'], textAlign: 'center' },
+    fieldLabel: { fontSize: TYPOGRAPHY.fontSize.sm, fontWeight: '600', color: colors.textSecondary, marginBottom: SPACING.xs, marginTop: SPACING.base },
+    required: { color: colors.danger },
+    input: {
+      backgroundColor: colors.backgroundCard, borderWidth: 1.5, borderColor: colors.border,
+      borderRadius: BORDER_RADIUS.md, padding: SPACING.base,
+      fontSize: TYPOGRAPHY.fontSize.base, color: colors.textPrimary, ...SHADOWS.sm,
+    },
+    textArea: { minHeight: 120, textAlignVertical: 'top' },
+    inputError: { borderColor: colors.danger },
+    errorText: { fontSize: TYPOGRAPHY.fontSize.xs, color: colors.danger, marginTop: 4, marginLeft: 2 },
+    charCount: { fontSize: TYPOGRAPHY.fontSize.xs, color: colors.textMuted, textAlign: 'right', marginTop: 4 },
+    publishBtn: {
+      backgroundColor: colors.primary, borderRadius: BORDER_RADIUS.md, height: 56,
+      alignItems: 'center', justifyContent: 'center', marginTop: SPACING['2xl'], ...SHADOWS.md,
+    },
+    publishBtnDisabled: { opacity: 0.6 },
+    publishBtnText: { color: colors.white, fontSize: TYPOGRAPHY.fontSize.md, fontWeight: '700' },
+    forbidden: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.backgroundPrimary },
+    forbiddenEmoji: { fontSize: 48, marginBottom: SPACING.base },
+    forbiddenText: { fontSize: TYPOGRAPHY.fontSize.lg, fontWeight: '700', color: colors.textPrimary },
+  });

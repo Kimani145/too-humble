@@ -14,9 +14,10 @@ import {
   Dimensions,
   StatusBar,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 import Svg, { Rect, Path } from 'react-native-svg';
-import { COLORS, TYPOGRAPHY, SPACING } from '../../constants/theme';
+import { TYPOGRAPHY, SPACING } from '../../constants/theme';
 
 const { width, height } = Dimensions.get('window');
 
@@ -100,8 +101,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#0A0D1A', // Deep dark navy blue
     alignItems: 'center',
     justifyContent: 'center',
-    width,
-    height,
+    width: Platform.OS === 'web' ? '100vw' as any : '100%',
+    height: Platform.OS === 'web' ? '100vh' as any : '100%',
   },
   content: {
     alignItems: 'center',

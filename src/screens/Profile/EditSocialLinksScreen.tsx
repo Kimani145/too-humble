@@ -23,7 +23,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../../context/AuthContext';
 import { ProfileUpdate } from '../../types/database.types';
 import { supabase } from '../../lib/supabase';
-import { COLORS, TYPOGRAPHY, SPACING, BORDER_RADIUS, SHADOWS } from '../../constants/theme';
+import { useTheme, AppColors } from '../../context/ThemeContext';
+import { TYPOGRAPHY, SPACING, BORDER_RADIUS, SHADOWS } from '../../constants/theme';
 
 // DB CHECK constraint pattern: https://(www\.)?facebook\.com/[A-Za-z0-9\._\-]+
 const FACEBOOK_REGEX = /^https:\/\/(www\.)?facebook\.com\/[A-Za-z0-9._\-]+$/;
@@ -39,6 +40,8 @@ function validateFbLink(link: string): string | null {
 export default function EditSocialLinksScreen(): React.JSX.Element {
   const router = useRouter();
   const { profile, user, refreshProfile } = useAuth();
+  const { colors } = useTheme();
+  const styles = getStyles(colors);
 
   const [fbLink, setFbLink] = useState<string>(profile?.fb_link ?? '');
   const [fbError, setFbError] = useState<string | null>(null);
@@ -93,9 +96,9 @@ export default function EditSocialLinksScreen(): React.JSX.Element {
       style={styles.flex}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
-      <StatusBar barStyle="light-content" backgroundColor={COLORS.primary} />
+      <StatusBar barStyle="light-content" backgroundColor={colors.primary} />
 
-      <LinearGradient colors={[COLORS.primary, COLORS.primaryDark]} style={styles.header}>
+      <LinearGradient colors={[colors.primary, colors.primaryDark]} style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <Text style={styles.backIcon}>←</Text>
         </TouchableOpacity>
@@ -130,7 +133,7 @@ export default function EditSocialLinksScreen(): React.JSX.Element {
                 if (fbError) setFbError(null);
               }}
               placeholder="https://facebook.com/yourname"
-              placeholderTextColor={COLORS.midGray}
+              placeholderTextColor={colors.textMuted}
               autoCapitalize="none"
               keyboardType="url"
               autoComplete="url"
@@ -162,7 +165,7 @@ export default function EditSocialLinksScreen(): React.JSX.Element {
           activeOpacity={0.85}
         >
           {isSaving ? (
-            <ActivityIndicator color={COLORS.white} />
+            <ActivityIndicator color={colors.white} />
           ) : (
             <Text style={styles.saveBtnText}>Save Changes</Text>
           )}
@@ -176,121 +179,122 @@ export default function EditSocialLinksScreen(): React.JSX.Element {
   );
 }
 
-const styles = StyleSheet.create({
-  flex: { flex: 1, backgroundColor: COLORS.white },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingTop: 52,
-    paddingBottom: SPACING.base,
-    paddingHorizontal: SPACING.base,
-  },
-  backBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: COLORS.overlayLight,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  backIcon: { fontSize: 20, color: COLORS.white, fontWeight: '700' },
-  headerTitle: {
-    flex: 1,
-    fontSize: TYPOGRAPHY.fontSize.lg,
-    fontWeight: '700',
-    color: COLORS.white,
-    textAlign: 'center',
-  },
-  headerRight: { width: 40 },
-  body: { flex: 1, backgroundColor: COLORS.white },
-  bodyContent: {
-    paddingHorizontal: SPACING['2xl'],
-    paddingTop: SPACING['2xl'],
-    paddingBottom: SPACING['5xl'],
-  },
-  sectionTitle: {
-    fontSize: TYPOGRAPHY.fontSize.xl,
-    fontWeight: '700',
-    color: COLORS.charcoal,
-    marginBottom: SPACING.xs,
-  },
-  sectionSubtitle: {
-    fontSize: TYPOGRAPHY.fontSize.base,
-    color: COLORS.midGray,
-    lineHeight: TYPOGRAPHY.fontSize.base * 1.5,
-    marginBottom: SPACING['2xl'],
-  },
-  fieldGroup: { marginBottom: SPACING['2xl'] },
-  labelRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: SPACING.sm,
-    gap: SPACING.sm,
-  },
-  socialIcon: { fontSize: 22 },
-  label: {
-    fontSize: TYPOGRAPHY.fontSize.sm,
-    fontWeight: '700',
-    color: COLORS.darkGray,
-  },
-  inputWrapper: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.offWhite,
-    borderRadius: BORDER_RADIUS.md,
-    borderWidth: 1.5,
-    borderColor: COLORS.lightGray,
-    paddingHorizontal: SPACING.base,
-    ...SHADOWS.sm,
-  },
-  inputError: { borderColor: COLORS.error },
-  input: {
-    flex: 1,
-    height: 52,
-    fontSize: TYPOGRAPHY.fontSize.base,
-    color: COLORS.charcoal,
-  },
-  clearBtn: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: COLORS.lightGray,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  clearIcon: { fontSize: 12, color: COLORS.darkGray, fontWeight: '700' },
-  errorText: {
-    fontSize: TYPOGRAPHY.fontSize.xs,
-    color: COLORS.error,
-    marginTop: 4,
-    marginLeft: 2,
-  },
-  hint: {
-    fontSize: TYPOGRAPHY.fontSize.xs,
-    color: COLORS.midGray,
-    marginTop: SPACING.xs,
-    marginLeft: 2,
-  },
-  saveBtn: {
-    backgroundColor: COLORS.primary,
-    borderRadius: BORDER_RADIUS.md,
-    height: 54,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: SPACING['2xl'],
-    ...SHADOWS.md,
-  },
-  saveBtnDisabled: { opacity: 0.5 },
-  saveBtnText: {
-    fontSize: TYPOGRAPHY.fontSize.md,
-    fontWeight: '700',
-    color: COLORS.white,
-    letterSpacing: 0.5,
-  },
-  privacyNote: {
-    fontSize: TYPOGRAPHY.fontSize.xs,
-    color: COLORS.midGray,
-    textAlign: 'center',
-    lineHeight: TYPOGRAPHY.fontSize.xs * 1.6,
-  },
-});
+const getStyles = (colors: AppColors) =>
+  StyleSheet.create({
+    flex: { flex: 1, backgroundColor: colors.backgroundPrimary },
+    header: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingTop: 52,
+      paddingBottom: SPACING.base,
+      paddingHorizontal: SPACING.base,
+    },
+    backBtn: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      backgroundColor: colors.overlayLight,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    backIcon: { fontSize: 20, color: colors.white, fontWeight: '700' },
+    headerTitle: {
+      flex: 1,
+      fontSize: TYPOGRAPHY.fontSize.lg,
+      fontWeight: '700',
+      color: colors.white,
+      textAlign: 'center',
+    },
+    headerRight: { width: 40 },
+    body: { flex: 1, backgroundColor: colors.backgroundPrimary },
+    bodyContent: {
+      paddingHorizontal: SPACING['2xl'],
+      paddingTop: SPACING['2xl'],
+      paddingBottom: SPACING['5xl'],
+    },
+    sectionTitle: {
+      fontSize: TYPOGRAPHY.fontSize.xl,
+      fontWeight: '700',
+      color: colors.textPrimary,
+      marginBottom: SPACING.xs,
+    },
+    sectionSubtitle: {
+      fontSize: TYPOGRAPHY.fontSize.base,
+      color: colors.textSecondary,
+      lineHeight: TYPOGRAPHY.fontSize.base * 1.5,
+      marginBottom: SPACING['2xl'],
+    },
+    fieldGroup: { marginBottom: SPACING['2xl'] },
+    labelRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: SPACING.sm,
+      gap: SPACING.sm,
+    },
+    socialIcon: { fontSize: 22 },
+    label: {
+      fontSize: TYPOGRAPHY.fontSize.sm,
+      fontWeight: '700',
+      color: colors.textSecondary,
+    },
+    inputWrapper: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: colors.backgroundCard,
+      borderRadius: BORDER_RADIUS.md,
+      borderWidth: 1.5,
+      borderColor: colors.border,
+      paddingHorizontal: SPACING.base,
+      ...SHADOWS.sm,
+    },
+    inputError: { borderColor: colors.danger },
+    input: {
+      flex: 1,
+      height: 52,
+      fontSize: TYPOGRAPHY.fontSize.base,
+      color: colors.textPrimary,
+    },
+    clearBtn: {
+      width: 28,
+      height: 28,
+      borderRadius: 14,
+      backgroundColor: colors.lightGray,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    clearIcon: { fontSize: 12, color: colors.textSecondary, fontWeight: '700' },
+    errorText: {
+      fontSize: TYPOGRAPHY.fontSize.xs,
+      color: colors.danger,
+      marginTop: 4,
+      marginLeft: 2,
+    },
+    hint: {
+      fontSize: TYPOGRAPHY.fontSize.xs,
+      color: colors.textMuted,
+      marginTop: SPACING.xs,
+      marginLeft: 2,
+    },
+    saveBtn: {
+      backgroundColor: colors.primary,
+      borderRadius: BORDER_RADIUS.md,
+      height: 54,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginBottom: SPACING['2xl'],
+      ...SHADOWS.md,
+    },
+    saveBtnDisabled: { opacity: 0.5 },
+    saveBtnText: {
+      fontSize: TYPOGRAPHY.fontSize.md,
+      fontWeight: '700',
+      color: colors.white,
+      letterSpacing: 0.5,
+    },
+    privacyNote: {
+      fontSize: TYPOGRAPHY.fontSize.xs,
+      color: colors.textMuted,
+      textAlign: 'center',
+      lineHeight: TYPOGRAPHY.fontSize.xs * 1.6,
+    },
+  });

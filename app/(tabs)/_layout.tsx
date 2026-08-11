@@ -4,10 +4,25 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../src/context/ThemeContext';
 import { useTranslation } from '../../src/context/LanguageContext';
 import { TYPOGRAPHY } from '../../src/constants/theme';
+import { Platform, TouchableOpacity, Text } from 'react-native';
+import WebLayout from '../../src/components/web/WebLayout';
+
+const ThemeToggleButton = () => {
+  const { isDark, toggleTheme } = useTheme();
+  return (
+    <TouchableOpacity onPress={toggleTheme} style={{ marginRight: 16 }}>
+      <Text style={{ fontSize: 20 }}>{isDark ? '☀️' : '🌙'}</Text>
+    </TouchableOpacity>
+  );
+};
 
 export default function TabsLayout(): React.JSX.Element {
   const { colors } = useTheme();
   const { t } = useTranslation();
+
+  if (Platform.OS === 'web') {
+    return <WebLayout />;
+  }
 
   return (
     <Tabs

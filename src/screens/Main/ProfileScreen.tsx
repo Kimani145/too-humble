@@ -17,6 +17,7 @@ import {
   TextInput,
   ActivityIndicator,
   Switch,
+  Platform,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
@@ -26,7 +27,10 @@ import { supabase, uploadToStorage } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import { useTranslation, Language } from '../../context/LanguageContext';
-import { COLORS, TYPOGRAPHY, SPACING, BORDER_RADIUS, SHADOWS, STORAGE_BUCKETS } from '../../constants/theme';
+import GlobalHeader from '../../components/GlobalHeader';
+import { useWebLayout } from '../../hooks/useWebLayout';
+import ContextPanel from '../../components/web/ContextPanel';
+import { TYPOGRAPHY, SPACING, BORDER_RADIUS, SHADOWS, STORAGE_BUCKETS } from '../../constants/theme';
 
 // -----------------------------------------------------------------------
 // YouTube URL → Video ID parser
@@ -103,9 +107,10 @@ function SectionRow({
 export default function ProfileScreen(): React.JSX.Element {
   const router = useRouter();
   const { user, profile, logout, updateProfile, refreshProfile, role } = useAuth();
-  const { colors, isDarkMode, toggleTheme } = useTheme();
+  const { colors, isDark, toggleTheme } = useTheme();
   const { t, language, setLanguage } = useTranslation();
   const styles = getStyles(colors);
+  const { isWide } = useWebLayout();
 
   const [isUpdatingAvatar, setIsUpdatingAvatar] = useState(false);
 
@@ -237,9 +242,10 @@ export default function ProfileScreen(): React.JSX.Element {
   const avatarUrl = profile?.avatar_url;
   const displayName = profile?.full_name ?? user?.email ?? 'User';
 
-  return (
-    <View style={styles.container}>
+  const mainContent = (
+    <View style={[styles.container, Platform.OS === 'web' && styles.webContent]}>
       <StatusBar barStyle="light-content" backgroundColor={colors.primaryDark} />
+      <GlobalHeader />
       <LinearGradient colors={[colors.primary, colors.primaryDark]} style={styles.header}>
         {/* Avatar */}
         <TouchableOpacity
@@ -320,10 +326,10 @@ export default function ProfileScreen(): React.JSX.Element {
             label={t('profile.dark_mode')}
             rightElement={
               <Switch
-                value={isDarkMode}
+                value={isDark}
                 onValueChange={toggleTheme}
                 trackColor={{ false: colors.lightGray, true: colors.accent }}
-                thumbColor={isDarkMode ? colors.white : '#FFFFFF'}
+                thumbColor={isDark ? colors.white : '#FFFFFF'}
               />
             }
             colors={colors}
@@ -426,6 +432,57 @@ export default function ProfileScreen(): React.JSX.Element {
       )}
     </View>
   );
+
+  if (isWide) {
+    const daysActive = profile?.created_at
+      ? Math.floor((Date.now() - new Date(profile.created_at).getTime()) / 86400000)
+      : 0;
+
+    return (
+      <View style={{ flex: 1, flexDirection: 'row' }}>
+        <View style={{ flex: 1 }}>
+          {mainContent}
+        </View>
+        <ContextPanel>
+          {/* Card 1: Your Activity */}
+          <View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
+              <Text style={{ fontWeight: '700', fontSize: 14, color: colors.textPrimary }}>Your Activity</Text>
+            </View>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+              <View style={{ alignItems: 'center', flex: 1 }}>
+                <Text style={{ fontSize: 20, fontWeight: '700', color: colors.accent }}>0</Text>
+                <Text style={{ fontSize: 12, color: colors.textMuted }}>Posts</Text>
+              </View>
+              <View style={{ alignItems: 'center', flex: 1 }}>
+                <Text style={{ fontSize: 20, fontWeight: '700', color: colors.accent }}>0</Text>
+                <Text style={{ fontSize: 12, color: colors.textMuted }}>Reactions</Text>
+              </View>
+              <View style={{ alignItems: 'center', flex: 1 }}>
+                <Text style={{ fontSize: 20, fontWeight: '700', color: colors.accent }}>{daysActive}</Text>
+                <Text style={{ fontSize: 12, color: colors.textMuted }}>Days Active</Text>
+              </View>
+            </View>
+          </View>
+
+          {/* Card 2: Reading */}
+          <View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+              <Text style={{ fontWeight: '700', fontSize: 14, color: colors.textPrimary }}>Reading</Text>
+            </View>
+            <Text style={{ fontSize: 13, color: colors.textSecondary, marginBottom: 8 }}>
+              Continue your Bible reading journey.
+            </Text>
+            <TouchableOpacity onPress={() => router.push('/(tabs)/bible')}>
+              <Text style={{ color: colors.primary, fontWeight: '600', fontSize: 13 }}>Open Bible →</Text>
+            </TouchableOpacity>
+          </View>
+        </ContextPanel>
+      </View>
+    );
+  }
+
+  return mainContent;
 }
 
 // -----------------------------------------------------------------------
@@ -448,7 +505,12 @@ const getRowStyles = (colors: any) =>
 const getStyles = (colors: any) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.backgroundPrimary },
-    header: { paddingTop: 52, paddingBottom: SPACING['2xl'], alignItems: 'center' },
+    webContent: {
+      maxWidth: 960,
+      width: '100%',
+      alignSelf: 'center' as const,
+    },
+    header: { paddingTop: SPACING.md, paddingBottom: SPACING['2xl'], alignItems: 'center' },
     avatarContainer: {
       width: 88,
       height: 88,
