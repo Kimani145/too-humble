@@ -31,7 +31,7 @@ export async function flushOfflineQueue(
       if (draft.localImagePath && draft.imageExt) {
         // Read the persisted local image as a base64 blob
         const base64 = await FileSystem.readAsStringAsync(draft.localImagePath, {
-          encoding: FileSystem.EncodingType.Base64,
+          encoding: FileSystem.EncodingType?.Base64 ?? ('base64' as FileSystem.EncodingType),
         });
 
         // Convert base64 to ArrayBuffer for Supabase upload

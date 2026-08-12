@@ -45,7 +45,7 @@ function StatCard({ label, value, emoji, color, colors }: StatCardProps): React.
 // -----------------------------------------------------------------------
 export default function AdminDashboard(): React.JSX.Element {
   const router = useRouter();
-  const { role, isLoading } = useAuth();
+  const { user, role, isLoading } = useAuth();
   const { colors } = useTheme();
   const styles = getStyles(colors);
 
@@ -119,22 +119,25 @@ export default function AdminDashboard(): React.JSX.Element {
 
   useEffect(() => {
     if (role === 'admin' && user?.id) {
-      supabase
-        .from('profiles')
-        .select('fb_link')
-        .eq('id', user.id)
-        .single()
-        .then(({ data }) => {
+      (async () => {
+        try {
+          const { data } = await supabase
+            .from('profiles')
+            .select('fb_link')
+            .eq('id', user.id)
+            .single();
           if (data?.fb_link) setFbLink(data.fb_link);
-        })
-        .catch(() => {});
+        } catch {
+          // ignore
+        }
+      })();
     }
   }, [role, user?.id]);
 
   const handleFbSave = async () => {
     setFbSaving(true);
     setFbError(null);
-    const { error } = await supabase.rpc('admin_update_fb_link', {
+    const { error } = await (supabase.rpc as (fn: string, args: Record<string, unknown>) => Promise<{ error: { message: string } | null }>)('admin_update_fb_link', {
       p_fb_link: fbLink.trim() || null,
     });
     if (error) {

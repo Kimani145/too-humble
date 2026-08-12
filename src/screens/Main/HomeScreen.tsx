@@ -233,17 +233,20 @@ export default function HomeScreen(): React.JSX.Element {
   const [adminFbLink, setAdminFbLink] = useState<string | null>(null);
 
   useEffect(() => {
-    supabase
-      .from('profiles')
-      .select('fb_link')
-      .eq('role', 'admin')
-      .not('fb_link', 'is', null)
-      .limit(1)
-      .single()
-      .then(({ data }) => {
+    (async () => {
+      try {
+        const { data } = await supabase
+          .from('profiles')
+          .select('fb_link')
+          .eq('role', 'admin')
+          .not('fb_link', 'is', null)
+          .limit(1)
+          .maybeSingle();
         if (data?.fb_link) setAdminFbLink(data.fb_link);
-      })
-      .catch(() => {});
+      } catch {
+        // silent catch
+      }
+    })();
   }, []);
 
   // ----------------------------------------------------------------

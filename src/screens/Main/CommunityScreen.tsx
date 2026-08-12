@@ -390,31 +390,6 @@ export default function CommunityScreen(): React.JSX.Element {
     setDraftCount(queue.length);
   }, []);
 
-  const handleFlushQueue = useCallback(async (): Promise<void> => {
-    if (isFlushing) return;
-    setIsFlushing(true);
-    try {
-      const result = await flushOfflineQueue();
-      if (result.published > 0) {
-        await fetchPosts(true);
-      }
-    } finally {
-      await refreshDraftCount();
-      setIsFlushing(false);
-    }
-  }, [isFlushing, fetchPosts, refreshDraftCount]);
-
-  useEffect(() => {
-    const unsubscribe = NetInfo.addEventListener((state) => {
-      const offline = state.isConnected === false;
-      setIsOffline(offline);
-      if (state.isConnected && !isFlushing) {
-        handleFlushQueue();
-      }
-    });
-    return () => unsubscribe();
-  }, [isFlushing, handleFlushQueue]);
-
   const fetchPosts = useCallback(async (reset = false): Promise<void> => {
     const currentPage = reset ? 0 : page;
     if (!reset && !hasMore) return;
@@ -458,6 +433,31 @@ export default function CommunityScreen(): React.JSX.Element {
       }
     }
   }, [page, hasMore]);
+
+  const handleFlushQueue = useCallback(async (): Promise<void> => {
+    if (isFlushing) return;
+    setIsFlushing(true);
+    try {
+      const result = await flushOfflineQueue();
+      if (result.published > 0) {
+        await fetchPosts(true);
+      }
+    } finally {
+      await refreshDraftCount();
+      setIsFlushing(false);
+    }
+  }, [isFlushing, fetchPosts, refreshDraftCount]);
+
+  useEffect(() => {
+    const unsubscribe = NetInfo.addEventListener((state) => {
+      const offline = state.isConnected === false;
+      setIsOffline(offline);
+      if (state.isConnected && !isFlushing) {
+        handleFlushQueue();
+      }
+    });
+    return () => unsubscribe();
+  }, [isFlushing, handleFlushQueue]);
 
   useEffect(() => {
     const init = async (): Promise<void> => {

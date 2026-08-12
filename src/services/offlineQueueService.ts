@@ -44,7 +44,7 @@ export async function enqueueDraft(
   let localImagePath: string | null = null;
 
   if (imageUri && imageExt) {
-    const destPath = `${FileSystem.documentDirectory}draft_${id}.${imageExt}`;
+    const destPath = `${FileSystem.documentDirectory ?? ''}draft_${id}.${imageExt}`;
     await FileSystem.copyAsync({ from: imageUri, to: destPath });
     localImagePath = destPath;
   }
