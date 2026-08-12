@@ -42,10 +42,25 @@ interface AuthContextValue {
 // -----------------------------------------------------------------------
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
+const defaultAuthContext: AuthContextValue = {
+  session: null,
+  user: null,
+  profile: null,
+  role: null,
+  isLoading: true,
+  isAuthenticated: false,
+  login: async () => {},
+  register: async () => {},
+  loginWithGoogle: async () => {},
+  logout: async () => {},
+  updateProfile: async () => {},
+  refreshProfile: async () => {},
+};
+
 export function useAuth(): AuthContextValue {
   const ctx = useContext(AuthContext);
   if (!ctx) {
-    throw new Error('useAuth must be used within an <AuthProvider>');
+    return defaultAuthContext;
   }
   return ctx;
 }

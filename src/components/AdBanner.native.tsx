@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View } from 'react-native';
+import { View, NativeModules } from 'react-native';
 import { checkDonorStatus, getBannerAdUnitId } from '../services/adService';
 
 let BannerAdComponent: React.ComponentType<{
@@ -9,16 +9,18 @@ let BannerAdComponent: React.ComponentType<{
 }> | null = null;
 let BANNER_SIZE: string | null = null;
 
-try {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const mod = require('react-native-google-mobile-ads') as {
-    BannerAd: typeof BannerAdComponent;
-    BannerAdSize: { BANNER: string };
-  };
-  BannerAdComponent = mod.BannerAd;
-  BANNER_SIZE = mod.BannerAdSize.BANNER;
-} catch {
-  // Expo Go: react-native-google-mobile-ads native module not registered
+if (NativeModules.RNGoogleMobileAdsModule) {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const mod = require('react-native-google-mobile-ads') as {
+      BannerAd: typeof BannerAdComponent;
+      BannerAdSize: { BANNER: string };
+    };
+    BannerAdComponent = mod.BannerAd;
+    BANNER_SIZE = mod.BannerAdSize?.BANNER ?? 'BANNER';
+  } catch {
+    // Expo Go: react-native-google-mobile-ads native module not registered
+  }
 }
 
 export function AdBanner(): React.JSX.Element | null {

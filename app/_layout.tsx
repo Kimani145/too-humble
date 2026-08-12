@@ -14,7 +14,7 @@ import LoadingScreen from '../src/screens/Auth/LoadingScreen';
 import * as Sentry from '@sentry/react-native';
 
 import { ErrorBoundary } from '../src/components/ErrorBoundary';
-import { AdsConsent, AdsConsentStatus } from 'react-native-google-mobile-ads';
+import { requestAdsConsent } from '../src/utils/adsConsent';
 import { Platform } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
 import { flushOfflineQueue } from '../src/services/offlineFlushService';
@@ -46,19 +46,7 @@ function RootNavigator(): React.JSX.Element {
   const { isLoading } = useAuth();
 
   useEffect(() => {
-    if (Platform.OS === 'web') return;
-    AdsConsent.requestInfoUpdate()
-      .then((consentInfo) => {
-        if (
-          consentInfo.isConsentFormAvailable &&
-          consentInfo.status === AdsConsentStatus.REQUIRED
-        ) {
-          return AdsConsent.showForm();
-        }
-      })
-      .catch(() => {
-        // Consent failure is non-fatal — ads will show without personalisation
-      });
+    requestAdsConsent();
   }, []);
 
   useEffect(() => {
