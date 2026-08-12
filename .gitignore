@@ -54,7 +54,7 @@ expo-env.d.ts
 *.pdf
 
 # Supabase CLI binary (if downloaded locally)
-/supabase
+/supabase-cli-binary
 
 .env.local
 BIBLE_AUDIT_REPORT.md
