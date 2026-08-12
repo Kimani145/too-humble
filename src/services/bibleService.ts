@@ -109,7 +109,7 @@ export const ALL_BOOKS: BibleBook[] = [
 ];
 
 // Helper maps
-const BOOK_NAME_TO_ID: Record<string, string> = {
+export const BOOK_NAME_TO_ID: Record<string, string> = {
   'Genesis': 'GEN', 'Exodus': 'EXO', 'Leviticus': 'LEV', 'Numbers': 'NUM', 'Deuteronomy': 'DEU',
   'Joshua': 'JOS', 'Judges': 'JDG', 'Ruth': 'RUT', '1 Samuel': '1SA', '2 Samuel': '2SA',
   '1 Kings': '1KI', '2 Kings': '2KI', '1 Chronicles': '1CH', '2 Chronicles': '2CH',
@@ -126,7 +126,7 @@ const BOOK_NAME_TO_ID: Record<string, string> = {
   '3 John': '3JN', 'Jude': 'JUD', 'Revelation': 'REV'
 };
 
-const BOOK_ID_TO_NAME: Record<string, string> = {
+export const BOOK_ID_TO_NAME: Record<string, string> = {
   'GEN': 'Genesis', 'EXO': 'Exodus', 'LEV': 'Leviticus', 'NUM': 'Numbers', 'DEU': 'Deuteronomy',
   'JOS': 'Joshua', 'JDG': 'Judges', 'RUT': 'Ruth', '1SA': '1 Samuel', '2SA': '2 Samuel',
   '1KI': '1 Kings', '2KI': '2 Kings', '1CH': '1 Chronicles', '2CH': '2 Chronicles',

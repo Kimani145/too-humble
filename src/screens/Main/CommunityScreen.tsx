@@ -384,6 +384,7 @@ export default function CommunityScreen(): React.JSX.Element {
   const [isOffline, setIsOffline] = useState<boolean>(false);
   const [draftCount, setDraftCount] = useState<number>(0);
   const [isFlushing, setIsFlushing] = useState<boolean>(false);
+  const isFlushingRef = useRef<boolean>(false);
 
   const refreshDraftCount = useCallback(async (): Promise<void> => {
     const queue = await getDraftQueue();
@@ -435,7 +436,8 @@ export default function CommunityScreen(): React.JSX.Element {
   }, [page, hasMore]);
 
   const handleFlushQueue = useCallback(async (): Promise<void> => {
-    if (isFlushing) return;
+    if (isFlushingRef.current) return;
+    isFlushingRef.current = true;
     setIsFlushing(true);
     try {
       const result = await flushOfflineQueue();
@@ -444,20 +446,21 @@ export default function CommunityScreen(): React.JSX.Element {
       }
     } finally {
       await refreshDraftCount();
+      isFlushingRef.current = false;
       setIsFlushing(false);
     }
-  }, [isFlushing, fetchPosts, refreshDraftCount]);
+  }, [fetchPosts, refreshDraftCount]);
 
   useEffect(() => {
     const unsubscribe = NetInfo.addEventListener((state) => {
       const offline = state.isConnected === false;
       setIsOffline(offline);
-      if (state.isConnected && !isFlushing) {
+      if (state.isConnected && !isFlushingRef.current) {
         handleFlushQueue();
       }
     });
     return () => unsubscribe();
-  }, [isFlushing, handleFlushQueue]);
+  }, [handleFlushQueue]);
 
   useEffect(() => {
     const init = async (): Promise<void> => {

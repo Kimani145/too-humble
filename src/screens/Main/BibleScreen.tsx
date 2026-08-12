@@ -22,6 +22,7 @@ import {
   Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useLocalSearchParams } from 'expo-router';
 import {
   fetchBooks,
   fetchChapter,
@@ -30,6 +31,7 @@ import {
   saveBiblePreferences,
   preCacheEssentialChapters,
   getCachedChapterManifest,
+  BOOK_NAME_TO_ID,
 } from '../../services/bibleService';
 import {
   AOLabBook,
@@ -104,9 +106,10 @@ function ChapterModal({ book, onSelect, onClose }: ChapterModalProps): React.JSX
 interface ContentItemProps {
   item: AOLabContentItem;
   fontSize: number;
+  isHighlighted?: boolean;
 }
 
-function ContentItem({ item, fontSize }: ContentItemProps): React.JSX.Element {
+function ContentItem({ item, fontSize, isHighlighted }: ContentItemProps): React.JSX.Element {
   const { colors } = useTheme();
   const styles = getVerseStyles(colors);
 
@@ -117,9 +120,20 @@ function ContentItem({ item, fontSize }: ContentItemProps): React.JSX.Element {
       .replace(/\s+/g, ' ')
       .trim();
     return (
-      <View style={styles.container}>
-        <Text style={[styles.verseNum, { fontSize: fontSize - 2, color: colors.primary }]}>
-          {item.number}
+      <View
+        style={[
+          styles.container,
+          isHighlighted && {
+            backgroundColor: colors.primary + '1F',
+            borderColor: colors.primary,
+            borderWidth: 1.5,
+            borderRadius: BORDER_RADIUS.md,
+            padding: SPACING.xs,
+          },
+        ]}
+      >
+        <Text style={[styles.verseNum, { fontSize: fontSize - 2, color: colors.primary, fontWeight: isHighlighted ? '800' : '600' }]}>
+          {item.number} {isHighlighted ? '📍' : ''}
         </Text>
         <Text style={[styles.verseText, { fontSize, lineHeight: fontSize * 1.7, color: colors.textPrimary }]}>
           {text}
@@ -198,6 +212,9 @@ export default function BibleScreen(): React.JSX.Element {
   const { colors } = useTheme();
   const bibleStyles = getBibleStyles(colors);
   const { isWide } = useWebLayout();
+
+  const routeParams = useLocalSearchParams<{ book?: string; bookId?: string; chapter?: string; verse?: string }>();
+  const [highlightVerseNum, setHighlightVerseNum] = useState<number | null>(null);
 
   const [webFontSize, setWebFontSize] = useState<number>(16);
 
@@ -438,11 +455,46 @@ export default function BibleScreen(): React.JSX.Element {
     [handleBookPress, bibleStyles, colors]
   );
 
+  useEffect(() => {
+    const rawBook = routeParams.book || routeParams.bookId;
+    const rawChapter = routeParams.chapter;
+    const rawVerse = routeParams.verse;
+
+    if (rawBook && rawChapter && (otBooks.length > 0 || ntBooks.length > 0)) {
+      const targetChapterNum = parseInt(rawChapter, 10);
+      const targetVerseNum = rawVerse ? parseInt(rawVerse, 10) : null;
+      const matchedId = BOOK_NAME_TO_ID[rawBook] || rawBook.toUpperCase();
+
+      const allBooks = [...otBooks, ...ntBooks];
+      const found = allBooks.find((b) => {
+        const nb = rawBook.toLowerCase().trim();
+        return (
+          b.id.toUpperCase() === matchedId ||
+          b.name.toLowerCase() === nb ||
+          b.commonName.toLowerCase() === nb ||
+          (nb === 'psalm' && b.id === 'PSA') ||
+          (nb === 'psalms' && b.id === 'PSA')
+        );
+      });
+
+      if (found && !isNaN(targetChapterNum)) {
+        setSelectedBook(found);
+        setSelectedChapter(targetChapterNum);
+        setHighlightVerseNum(targetVerseNum);
+        loadChapter(found, targetChapterNum, translationId);
+      }
+    }
+  }, [routeParams.book, routeParams.bookId, routeParams.chapter, routeParams.verse, otBooks, ntBooks, translationId, loadChapter]);
+
   const renderContentItem = useCallback(
     ({ item }: ListRenderItemInfo<AOLabContentItem>): React.JSX.Element => (
-      <ContentItem item={item} fontSize={fontSize} />
+      <ContentItem
+        item={item}
+        fontSize={fontSize}
+        isHighlighted={item.type === 'verse' && item.number === highlightVerseNum}
+      />
     ),
-    [fontSize]
+    [fontSize, highlightVerseNum]
   );
 
   // ----------------------------------------------------------------

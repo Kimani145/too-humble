@@ -22,6 +22,7 @@ import {
   saveBiblePreferences,
   preCacheEssentialChapters,
   getCachedChapterManifest,
+  BOOK_NAME_TO_ID,
 } from '../../services/bibleService';
 import {
   AOLabBook,
@@ -46,6 +47,9 @@ export interface BibleDesktopNavigatorProps {
   otBooks?: AOLabBook[];
   ntBooks?: AOLabBook[];
   availableTranslations?: BibleTranslationMeta[];
+  targetBook?: string;
+  targetChapter?: number;
+  targetVerse?: number;
 }
 
 type DesktopView = 'browse' | 'chapters' | 'reading';
@@ -92,9 +96,10 @@ function BookRow({ book, onPress }: BookRowProps): React.JSX.Element {
 interface VerseRowProps {
   item: AOLabContentItem;
   fontSize: number;
+  isHighlighted?: boolean;
 }
 
-function VerseRow({ item, fontSize }: VerseRowProps): React.JSX.Element {
+function VerseRow({ item, fontSize, isHighlighted }: VerseRowProps): React.JSX.Element {
   const { colors } = useTheme();
 
   if (item.type === 'verse') {
@@ -104,9 +109,20 @@ function VerseRow({ item, fontSize }: VerseRowProps): React.JSX.Element {
       .replace(/\s+/g, ' ')
       .trim();
     return (
-      <View style={styles.verseRow}>
-        <Text style={[styles.verseNumber, { color: colors.accent }]}>
-          {item.number}
+      <View
+        style={[
+          styles.verseRow,
+          isHighlighted && {
+            backgroundColor: colors.primary + '1F',
+            borderColor: colors.primary,
+            borderWidth: 1.5,
+            borderRadius: 8,
+            padding: 6,
+          },
+        ]}
+      >
+        <Text style={[styles.verseNumber, { color: colors.accent, fontWeight: isHighlighted ? '800' : '600' }]}>
+          {item.number} {isHighlighted ? '📍' : ''}
         </Text>
         <Text
           style={[
@@ -148,6 +164,9 @@ export default function BibleDesktopNavigator({
   otBooks: propOtBooks = [],
   ntBooks: propNtBooks = [],
   availableTranslations: propAvailableTranslations = BUNDLED_TRANSLATIONS,
+  targetBook,
+  targetChapter,
+  targetVerse,
 }: BibleDesktopNavigatorProps): React.JSX.Element {
   const { colors } = useTheme();
   const [view, setView] = useState<DesktopView>('browse');
@@ -160,6 +179,7 @@ export default function BibleDesktopNavigator({
 
   const [selectedBook, setSelectedBook] = useState<AOLabBook | null>(null);
   const [selectedChapter, setSelectedChapter] = useState<number | null>(null);
+  const [highlightVerseNum, setHighlightVerseNum] = useState<number | null>(targetVerse ?? null);
   const [chapterData, setChapterData] = useState<AOLabChapter | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -661,6 +681,7 @@ export default function BibleDesktopNavigator({
                 key={index}
                 item={item}
                 fontSize={fontSize}
+                isHighlighted={item.type === 'verse' && item.number === highlightVerseNum}
               />
             ))}
           </View>

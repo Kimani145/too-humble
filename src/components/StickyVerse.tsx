@@ -19,7 +19,7 @@ import { useTheme, AppColors } from '../context/ThemeContext';
 import { TYPOGRAPHY, SPACING, BORDER_RADIUS, SHADOWS } from '../constants/theme';
 
 interface StickyVerseProps {
-  onPress?: () => void;
+  onPress?: (verse?: DailyVerse) => void;
 }
 
 export default function StickyVerse({ onPress }: StickyVerseProps): React.JSX.Element {
@@ -104,7 +104,7 @@ export default function StickyVerse({ onPress }: StickyVerseProps): React.JSX.El
   return (
     <TouchableOpacity
       style={styles.container}
-      onPress={onPress}
+      onPress={() => onPress?.(verse || undefined)}
       activeOpacity={0.9}
     >
       <Animated.View style={{ opacity: fadeAnim }}>

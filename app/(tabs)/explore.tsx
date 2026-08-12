@@ -3,6 +3,7 @@ import React from 'react';
 import { View, Text, StyleSheet, StatusBar, ScrollView, Platform } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import StickyVerse from '../../src/components/StickyVerse';
 import GlobalHeader from '../../src/components/GlobalHeader';
 import { useTheme } from '../../src/context/ThemeContext';
@@ -10,6 +11,7 @@ import { useTranslation } from '../../src/context/LanguageContext';
 import { TYPOGRAPHY, SPACING } from '../../src/constants/theme';
 
 export default function ExploreScreen(): React.JSX.Element {
+  const router = useRouter();
   const { colors } = useTheme();
   const { t } = useTranslation();
   const styles = getStyles(colors);
@@ -19,7 +21,22 @@ export default function ExploreScreen(): React.JSX.Element {
       <StatusBar barStyle="light-content" backgroundColor={colors.primaryDark} />
       <GlobalHeader />
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        <StickyVerse />
+        <StickyVerse
+          onPress={(v) =>
+            router.push(
+              v
+                ? {
+                    pathname: '/(tabs)/bible',
+                    params: {
+                      book: v.book,
+                      chapter: String(v.chapter),
+                      verse: String(v.verse),
+                    },
+                  }
+                : '/(tabs)/bible'
+            )
+          }
+        />
         <View style={styles.comingSoon}>
           <View style={styles.iconCircle}>
             <Ionicons name="search-outline" size={48} color={colors.accent} />

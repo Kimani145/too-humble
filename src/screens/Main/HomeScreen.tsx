@@ -517,7 +517,22 @@ export default function HomeScreen(): React.JSX.Element {
   const renderHeader = useCallback((): React.JSX.Element => (
     <>
       {/* StickyVerse */}
-      <StickyVerse onPress={() => router.push('/(tabs)/bible')} />
+      <StickyVerse
+        onPress={(v) =>
+          router.push(
+            v
+              ? {
+                  pathname: '/(tabs)/bible',
+                  params: {
+                    book: v.book,
+                    chapter: String(v.chapter),
+                    verse: String(v.verse),
+                  },
+                }
+              : '/(tabs)/bible'
+          )
+        }
+      />
 
       {/* Feed label */}
       <View style={styles.sectionHeader}>
