@@ -89,3 +89,31 @@ export async function markUserAsDonor(userId: string): Promise<void> {
     JSON.stringify({ suppressedUntil })
   );
 }
+
+import { Platform } from 'react-native';
+
+// Returns the correct banner ad unit ID based on environment
+// Uses test ID in __DEV__ and on web (where AdMob doesn't run)
+export function getBannerAdUnitId(): string {
+  if (__DEV__ || Platform.OS === 'web') {
+    return process.env.EXPO_PUBLIC_ADMOB_TEST_BANNER_ID
+      ?? 'ca-app-pub-3940256099942544/6300978111';
+  }
+  return process.env.EXPO_PUBLIC_ADMOB_ANDROID_BANNER_ID
+    ?? 'ca-app-pub-5469850868838947/3385455049';
+}
+
+/**
+ * Checks if the current authenticated user has active donor ad suppression.
+ * Returns true if donor (ads suppressed), false otherwise.
+ */
+export async function checkDonorStatus(): Promise<boolean> {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    const userId = session?.user?.id ?? null;
+    const status = await getAdSuppressionStatus(userId);
+    return status.isSuppressed;
+  } catch {
+    return false;
+  }
+}

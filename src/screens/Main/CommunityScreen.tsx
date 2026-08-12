@@ -36,6 +36,10 @@ import { CommunityPost, CommunityPostInsert, CommunityPostUpdate } from '../../t
 import NetInfo from '@react-native-community/netinfo';
 import OfflineBanner from '../../components/OfflineBanner';
 import { CommunityPostSkeleton } from '../../components/skeletons/CommunityPostSkeleton';
+import { enqueueDraft, getDraftQueue } from '../../services/offlineQueueService';
+import { flushOfflineQueue } from '../../services/offlineFlushService';
+import { DraftQueueBadge } from '../../components/DraftQueueBadge';
+import { ShareButton } from '../../components/ShareButton';
 import {
   TYPOGRAPHY,
   SPACING,
@@ -170,6 +174,15 @@ function PostCard({ post, currentUserId, isAdmin, onFlag, onDelete, colors }: Po
           <Text style={styles.flagText}>Flagged for review</Text>
         </View>
       )}
+
+      {/* Action Row */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', paddingHorizontal: 12, paddingVertical: 8, borderTopWidth: 1, borderTopColor: colors.lightGray }}>
+        <ShareButton
+          title="Check this out on Too Humble"
+          message={post.caption ?? 'Shared from Too Humble community'}
+          size="small"
+        />
+      </View>
     </View>
   );
 }
@@ -227,6 +240,37 @@ function CreatePostModal({ visible, onClose, onPublished, userId, colors, t }: C
     if (!caption.trim() && !imageUri) {
       Alert.alert('Empty Post', 'Add a caption or select an image.');
       return;
+    }
+
+    // Check connectivity BEFORE attempting upload
+    const netState = await NetInfo.fetch();
+    if (netState.isConnected === false) {
+      // Save draft locally — do not attempt upload
+      setIsUploading(true);
+      try {
+        await enqueueDraft(
+          userId,
+          caption.trim(),
+          imageUri,
+          imageUri ? (imageUri.split('.').pop() ?? 'jpg') : null,
+          imageSizeKb
+        );
+        setCaption('');
+        setImageUri(null);
+        onPublished(); // triggers refreshDraftCount in parent
+        onClose();
+        // Show toast-style feedback
+        Alert.alert(
+          '📥 Saved for later',
+          "Your post will publish automatically when you're back online.",
+          [{ text: 'OK' }]
+        );
+      } catch {
+        Alert.alert('Error', 'Could not save your draft. Please try again.');
+      } finally {
+        setIsUploading(false);
+      }
+      return; // exit — do not fall through to upload
     }
 
     setIsUploading(true);
@@ -338,13 +382,38 @@ export default function CommunityScreen(): React.JSX.Element {
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
   const [isOffline, setIsOffline] = useState<boolean>(false);
+  const [draftCount, setDraftCount] = useState<number>(0);
+  const [isFlushing, setIsFlushing] = useState<boolean>(false);
+
+  const refreshDraftCount = useCallback(async (): Promise<void> => {
+    const queue = await getDraftQueue();
+    setDraftCount(queue.length);
+  }, []);
+
+  const handleFlushQueue = useCallback(async (): Promise<void> => {
+    if (isFlushing) return;
+    setIsFlushing(true);
+    try {
+      const result = await flushOfflineQueue();
+      if (result.published > 0) {
+        await fetchPosts(true);
+      }
+    } finally {
+      await refreshDraftCount();
+      setIsFlushing(false);
+    }
+  }, [isFlushing, fetchPosts, refreshDraftCount]);
 
   useEffect(() => {
     const unsubscribe = NetInfo.addEventListener((state) => {
-      setIsOffline(state.isConnected === false);
+      const offline = state.isConnected === false;
+      setIsOffline(offline);
+      if (state.isConnected && !isFlushing) {
+        handleFlushQueue();
+      }
     });
     return () => unsubscribe();
-  }, []);
+  }, [isFlushing, handleFlushQueue]);
 
   const fetchPosts = useCallback(async (reset = false): Promise<void> => {
     const currentPage = reset ? 0 : page;
@@ -394,7 +463,16 @@ export default function CommunityScreen(): React.JSX.Element {
     const init = async (): Promise<void> => {
       setIsLoading(true);
       await fetchPosts(true);
+      await refreshDraftCount();
       setIsLoading(false);
+
+      const netState = await NetInfo.fetch();
+      if (netState.isConnected) {
+        const queue = await getDraftQueue();
+        if (queue.length > 0) {
+          handleFlushQueue();
+        }
+      }
     };
     init();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -447,6 +525,12 @@ export default function CommunityScreen(): React.JSX.Element {
       <GlobalHeader />
 
       <OfflineBanner visible={isOffline} />
+
+      <DraftQueueBadge
+        count={draftCount}
+        isFlushing={isFlushing}
+        onPress={handleFlushQueue}
+      />
 
       {isLoading ? (
         <View style={{ padding: 16 }}>
@@ -533,7 +617,10 @@ export default function CommunityScreen(): React.JSX.Element {
         <CreatePostModal
           visible={showCreate}
           onClose={() => setShowCreate(false)}
-          onPublished={handleRefresh}
+          onPublished={async () => {
+            await handleRefresh();
+            await refreshDraftCount();
+          }}
           userId={user.id}
           colors={colors}
           t={t}

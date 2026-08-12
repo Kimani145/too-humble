@@ -7,7 +7,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity, Alert,
-  ActivityIndicator, StatusBar, ScrollView, ListRenderItemInfo,
+  ActivityIndicator, StatusBar, ScrollView, ListRenderItemInfo, TextInput,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -53,6 +53,10 @@ export default function AdminDashboard(): React.JSX.Element {
   const [flaggedPosts, setFlaggedPosts] = useState<CommunityPost[]>([]);
   const [newUserAlerts, setNewUserAlerts] = useState<Profile[]>([]);
   const [isFetching, setIsFetching] = useState(true);
+
+  const [fbLink, setFbLink] = useState<string>('');
+  const [fbSaving, setFbSaving] = useState<boolean>(false);
+  const [fbError, setFbError] = useState<string | null>(null);
 
   // ----------------------------------------------------------------
   // RBAC guard — break execution immediately for non-admins
@@ -112,6 +116,34 @@ export default function AdminDashboard(): React.JSX.Element {
     }
     return undefined;
   }, [role, fetchData]);
+
+  useEffect(() => {
+    if (role === 'admin' && user?.id) {
+      supabase
+        .from('profiles')
+        .select('fb_link')
+        .eq('id', user.id)
+        .single()
+        .then(({ data }) => {
+          if (data?.fb_link) setFbLink(data.fb_link);
+        })
+        .catch(() => {});
+    }
+  }, [role, user?.id]);
+
+  const handleFbSave = async () => {
+    setFbSaving(true);
+    setFbError(null);
+    const { error } = await supabase.rpc('admin_update_fb_link', {
+      p_fb_link: fbLink.trim() || null,
+    });
+    if (error) {
+      setFbError(error.message);
+    } else {
+      Alert.alert('Success', 'Ministry Facebook link updated successfully.');
+    }
+    setFbSaving(false);
+  };
 
   // ----------------------------------------------------------------
   // Actions
@@ -250,6 +282,35 @@ export default function AdminDashboard(): React.JSX.Element {
           />
         )}
 
+        {/* Ministry Presence */}
+        <Text style={styles.sectionTitle}>Ministry Presence</Text>
+        <View style={styles.ministryCard}>
+          <Text style={styles.ministryLabel}>Facebook Page</Text>
+          <Text style={styles.ministrySubtext}>Shown to all users as Follow Us link</Text>
+          <TextInput
+            value={fbLink}
+            onChangeText={setFbLink}
+            placeholder="https://facebook.com/yourpage"
+            placeholderTextColor={colors.midGray}
+            keyboardType="url"
+            autoCapitalize="none"
+            style={styles.fbInput}
+          />
+          {fbError ? <Text style={styles.errorText}>{fbError}</Text> : null}
+          <TouchableOpacity
+            style={styles.saveFbBtn}
+            onPress={handleFbSave}
+            disabled={fbSaving}
+            activeOpacity={0.8}
+          >
+            {fbSaving ? (
+              <ActivityIndicator color="#FFFFFF" size="small" />
+            ) : (
+              <Text style={styles.saveFbBtnText}>Save Ministry Link</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+
         {/* Quick links */}
         <Text style={styles.sectionTitle}>Quick Actions</Text>
         <TouchableOpacity style={styles.quickAction} onPress={() => router.push('/(admin)/create-content' as any)}>
@@ -339,4 +400,21 @@ const getStyles = (colors: any) =>
     quickActionEmoji: { fontSize: 22, marginRight: SPACING.md },
     quickActionText: { flex: 1, fontSize: TYPOGRAPHY.fontSize.base, fontWeight: '600', color: colors.charcoal },
     quickChevron: { fontSize: 22, color: colors.midGray },
+    ministryCard: {
+      backgroundColor: colors.backgroundCard, borderRadius: BORDER_RADIUS.lg,
+      padding: SPACING.md, marginBottom: SPACING.md, borderWidth: 1, borderColor: colors.lightGray, ...SHADOWS.sm,
+    },
+    ministryLabel: { fontSize: TYPOGRAPHY.fontSize.base, fontWeight: '700', color: colors.charcoal },
+    ministrySubtext: { fontSize: TYPOGRAPHY.fontSize.xs, color: colors.midGray, marginTop: 2, marginBottom: SPACING.sm },
+    fbInput: {
+      backgroundColor: colors.backgroundPrimary, borderWidth: 1, borderColor: colors.lightGray,
+      borderRadius: BORDER_RADIUS.md, padding: SPACING.md, fontSize: TYPOGRAPHY.fontSize.sm, color: colors.charcoal,
+      marginBottom: SPACING.sm,
+    },
+    errorText: { color: colors.error, fontSize: TYPOGRAPHY.fontSize.xs, marginBottom: SPACING.sm },
+    saveFbBtn: {
+      backgroundColor: colors.accent, borderRadius: BORDER_RADIUS.md, paddingVertical: SPACING.sm,
+      alignItems: 'center', justifyContent: 'center', marginTop: 4,
+    },
+    saveFbBtnText: { color: '#0A0D16', fontWeight: '700', fontSize: TYPOGRAPHY.fontSize.sm },
   });

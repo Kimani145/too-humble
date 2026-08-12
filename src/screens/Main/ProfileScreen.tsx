@@ -303,14 +303,6 @@ export default function ProfileScreen(): React.JSX.Element {
           />
           <View style={styles.divider} />
           <SectionRow
-            icon="logo-facebook"
-            label={t('profile.fb_link')}
-            value={profile?.fb_link ?? 'Not set'}
-            onPress={() => router.push('/profile/edit-social' as any)}
-            colors={colors}
-          />
-          <View style={styles.divider} />
-          <SectionRow
             icon="swap-horizontal-outline"
             label={t('profile.switch_account')}
             onPress={handleAccountSwitch}

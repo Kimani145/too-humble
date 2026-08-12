@@ -14,6 +14,11 @@ import LoadingScreen from '../src/screens/Auth/LoadingScreen';
 import * as Sentry from '@sentry/react-native';
 
 import { ErrorBoundary } from '../src/components/ErrorBoundary';
+import { AdsConsent, AdsConsentStatus } from 'react-native-google-mobile-ads';
+import { Platform } from 'react-native';
+import NetInfo from '@react-native-community/netinfo';
+import { flushOfflineQueue } from '../src/services/offlineFlushService';
+import { getDraftQueue } from '../src/services/offlineQueueService';
 
 Sentry.init({
   dsn: 'https://f8c622a303b5046ef156bade83625c9f@o4511658401005568.ingest.de.sentry.io/4511658428465232',
@@ -39,6 +44,39 @@ SplashScreen.preventAutoHideAsync();
 
 function RootNavigator(): React.JSX.Element {
   const { isLoading } = useAuth();
+
+  useEffect(() => {
+    if (Platform.OS === 'web') return;
+    AdsConsent.requestInfoUpdate()
+      .then((consentInfo) => {
+        if (
+          consentInfo.isConsentFormAvailable &&
+          consentInfo.status === AdsConsentStatus.REQUIRED
+        ) {
+          return AdsConsent.showForm();
+        }
+      })
+      .catch(() => {
+        // Consent failure is non-fatal — ads will show without personalisation
+      });
+  }, []);
+
+  useEffect(() => {
+    let wasOffline = false;
+    const unsubscribe = NetInfo.addEventListener((state) => {
+      const isNowOnline = state.isConnected === true;
+      if (wasOffline && isNowOnline) {
+        // Network just came back — flush silently
+        getDraftQueue().then((queue) => {
+          if (queue.length > 0) {
+            flushOfflineQueue().catch(() => {});
+          }
+        });
+      }
+      wasOffline = !isNowOnline;
+    });
+    return () => unsubscribe();
+  }, []);
 
   useEffect(() => {
     if (!isLoading) {

@@ -23,6 +23,7 @@ import {
   StatusBar,
   Dimensions,
   Share,
+  Linking,
   ListRenderItemInfo,
 } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -41,6 +42,8 @@ import OfflineBanner from '../../components/OfflineBanner';
 import StickyVerse from '../../components/StickyVerse';
 import BrandText from '../../components/BrandText';
 import { FeedCardSkeleton } from '../../components/skeletons/FeedCardSkeleton';
+import { AdBanner } from '../../components/AdBanner';
+import { ShareButton } from '../../components/ShareButton';
 import {
   TYPOGRAPHY,
   SPACING,
@@ -166,14 +169,12 @@ function FeedCard({ item, onReact, onShare, onSave, hasReacted, hasSaved, colors
           </Text>
         </TouchableOpacity>
 
-        <TouchableOpacity
-          style={styles.actionBtn}
-          onPress={() => onShare(item)}
-          activeOpacity={0.75}
-        >
-          <Ionicons name="share-social-outline" size={18} color={colors.darkGray} />
-          <Text style={styles.actionText}>{t('share')}</Text>
-        </TouchableOpacity>
+        <ShareButton
+          title={item.title}
+          message={item.body_text ?? item.title}
+          url={item.media_url ?? undefined}
+          size="small"
+        />
 
         <TouchableOpacity
           style={[styles.actionBtn, hasSaved ? styles.actionBtnSaved : null]}
@@ -229,6 +230,21 @@ export default function HomeScreen(): React.JSX.Element {
   const [hasMore, setHasMore] = useState<boolean>(true);
   const [reactedPosts, setReactedPosts] = useState<Set<string>>(new Set());
   const [savedPosts, setSavedPosts] = useState<Set<string>>(new Set());
+  const [adminFbLink, setAdminFbLink] = useState<string | null>(null);
+
+  useEffect(() => {
+    supabase
+      .from('profiles')
+      .select('fb_link')
+      .eq('role', 'admin')
+      .not('fb_link', 'is', null)
+      .limit(1)
+      .single()
+      .then(({ data }) => {
+        if (data?.fb_link) setAdminFbLink(data.fb_link);
+      })
+      .catch(() => {});
+  }, []);
 
   // ----------------------------------------------------------------
   // Fetch feed
@@ -567,6 +583,36 @@ export default function HomeScreen(): React.JSX.Element {
           })}
         </ScrollView>
       </LinearGradient>
+
+      {/* AdBanner — Native mobile only, suppressed for donors */}
+      <AdBanner />
+
+      {/* Ministry Facebook Link */}
+      {adminFbLink && (
+        <TouchableOpacity
+          onPress={() => Linking.openURL(adminFbLink)}
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            backgroundColor: '#1877F2',
+            borderRadius: 10,
+            padding: 14,
+            marginHorizontal: 16,
+            marginBottom: 12,
+          }}
+        >
+          <Text style={{ fontSize: 18, marginRight: 8, color: '#fff', fontWeight: 'bold' }}>f</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>
+              Follow Us on Facebook
+            </Text>
+            <Text style={{ color: 'rgba(255,255,255,0.75)', fontSize: 12 }}>
+              Stay connected with the ministry
+            </Text>
+          </View>
+          <Text style={{ color: '#fff', fontSize: 16 }}>›</Text>
+        </TouchableOpacity>
+      )}
 
       {/* Feed */}
       {isLoading ? (

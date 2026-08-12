@@ -22,6 +22,7 @@
         "backgroundColor": "#1A2B5E"
       },
       "package": "com.toohumble.app",
+      "googleMobileAdsAppId": "ca-app-pub-5469850868838947~9547538713",
       "permissions": [
         "android.permission.INTERNET",
         "android.permission.CAMERA",
@@ -36,6 +37,13 @@
     "plugins": [
       "expo-router",
       "expo-secure-store",
+      [
+        "react-native-google-mobile-ads",
+        {
+          "androidAppId": "ca-app-pub-5469850868838947~9547538713",
+          "userTrackingUsageDescription": "This identifier will be used to deliver personalised ads to you."
+        }
+      ],
       [
         "expo-image-picker",
         {
