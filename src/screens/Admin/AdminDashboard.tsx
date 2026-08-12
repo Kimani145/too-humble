@@ -137,7 +137,7 @@ export default function AdminDashboard(): React.JSX.Element {
   const handleFbSave = async () => {
     setFbSaving(true);
     setFbError(null);
-    const { error } = await (supabase.rpc as (fn: string, args: Record<string, unknown>) => Promise<{ error: { message: string } | null }>)('admin_update_fb_link', {
+    const { error } = await (supabase.rpc as unknown as (fn: string, args: Record<string, unknown>) => Promise<{ error: { message: string } | null }>)('admin_update_fb_link', {
       p_fb_link: fbLink.trim() || null,
     });
     if (error) {

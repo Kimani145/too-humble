@@ -1,4 +1,4 @@
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { supabase, uploadToStorage } from '../lib/supabase';
 import {
   getDraftQueue,
@@ -31,7 +31,7 @@ export async function flushOfflineQueue(
       if (draft.localImagePath && draft.imageExt) {
         // Read the persisted local image as a base64 blob
         const base64 = await FileSystem.readAsStringAsync(draft.localImagePath, {
-          encoding: FileSystem.EncodingType?.Base64 ?? ('base64' as FileSystem.EncodingType),
+          encoding: FileSystem.EncodingType.Base64,
         });
 
         // Convert base64 to ArrayBuffer for Supabase upload
