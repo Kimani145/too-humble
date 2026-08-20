@@ -15,6 +15,7 @@ import {
   TextInput,
   Modal,
   Alert,
+  AlertButton,
   RefreshControl,
   StatusBar,
   KeyboardAvoidingView,
@@ -139,19 +140,19 @@ function PostCard({ post, currentUserId, isAdmin, onFlag, onDelete, colors }: Po
         </View>
         {(isOwner || isAdmin) && (
           <TouchableOpacity
-            onPress={() =>
-              Alert.alert('Post Options', '', [
-                isAdmin && !post.is_flagged
-                  ? { text: '🚩 Flag Post', onPress: () => onFlag(post.id) }
-                  : isAdmin
-                  ? { text: '✅ Dismiss Flag', onPress: () => onFlag(post.id) }
-                  : null,
-                isAdmin || isOwner
-                  ? { text: '🗑️ Delete Post', style: 'destructive', onPress: () => onDelete(post.id) }
-                  : null,
-                { text: 'Cancel', style: 'cancel' },
-              ].filter(Boolean) as any)
-            }
+            onPress={() => {
+              const buttons: AlertButton[] = [];
+              if (isAdmin && !post.is_flagged) {
+                buttons.push({ text: '🚩 Flag Post', onPress: () => onFlag(post.id) });
+              } else if (isAdmin) {
+                buttons.push({ text: '✅ Dismiss Flag', onPress: () => onFlag(post.id) });
+              }
+              if (isAdmin || isOwner) {
+                buttons.push({ text: '🗑️ Delete Post', style: 'destructive', onPress: () => onDelete(post.id) });
+              }
+              buttons.push({ text: 'Cancel', style: 'cancel' });
+              Alert.alert('Post Options', '', buttons);
+            }}
             style={styles.moreBtn}
           >
             <Ionicons name="ellipsis-horizontal" size={18} color={colors.midGray} />
@@ -381,6 +382,8 @@ export default function CommunityScreen(): React.JSX.Element {
   const [showCreate, setShowCreate] = useState(false);
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
+  const pageRef = useRef<number>(0);
+  const hasMoreRef = useRef<boolean>(true);
   const [isOffline, setIsOffline] = useState<boolean>(false);
   const [draftCount, setDraftCount] = useState<number>(0);
   const [isFlushing, setIsFlushing] = useState<boolean>(false);
@@ -392,8 +395,13 @@ export default function CommunityScreen(): React.JSX.Element {
   }, []);
 
   const fetchPosts = useCallback(async (reset = false): Promise<void> => {
-    const currentPage = reset ? 0 : page;
-    if (!reset && !hasMore) return;
+    const currentPage = reset ? 0 : pageRef.current;
+    if (!reset && !hasMoreRef.current) return;
+
+    if (reset) {
+      pageRef.current = 0;
+      hasMoreRef.current = true;
+    }
 
     try {
       const from = currentPage * PAGE_SIZE;
@@ -424,7 +432,10 @@ export default function CommunityScreen(): React.JSX.Element {
       );
 
       setPosts((prev) => reset ? resolvedPosts : [...prev, ...resolvedPosts]);
-      setHasMore(newPosts.length === PAGE_SIZE);
+      const newHasMore = newPosts.length === PAGE_SIZE;
+      setHasMore(newHasMore);
+      hasMoreRef.current = newHasMore;
+      pageRef.current = currentPage + 1;
       setPage(currentPage + 1);
     } catch (err) {
       console.error('[CommunityScreen]', err);
@@ -433,7 +444,7 @@ export default function CommunityScreen(): React.JSX.Element {
         setIsOffline(true);
       }
     }
-  }, [page, hasMore]);
+  }, []);
 
   const handleFlushQueue = useCallback(async (): Promise<void> => {
     if (isFlushingRef.current) return;
