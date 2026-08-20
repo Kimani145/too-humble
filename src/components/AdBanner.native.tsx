@@ -1,7 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { View, NativeModules } from 'react-native';
+import { View } from 'react-native';
 import { checkDonorStatus, getBannerAdUnitId } from '../services/adService';
 
+// Module-level try/catch — runs once at load time, not on every render.
+// In an EAS build: succeeds, BannerAd and BannerAdSize are populated.
+// In Expo Go:      fails silently, component returns null everywhere.
 let BannerAdComponent: React.ComponentType<{
   unitId: string;
   size: string;
@@ -9,18 +12,16 @@ let BannerAdComponent: React.ComponentType<{
 }> | null = null;
 let BANNER_SIZE: string | null = null;
 
-if (NativeModules.RNGoogleMobileAdsModule) {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const mod = require('react-native-google-mobile-ads') as {
-      BannerAd: typeof BannerAdComponent;
-      BannerAdSize: { BANNER: string };
-    };
-    BannerAdComponent = mod.BannerAd;
-    BANNER_SIZE = mod.BannerAdSize?.BANNER ?? 'BANNER';
-  } catch {
-    // Expo Go: react-native-google-mobile-ads native module not registered
-  }
+try {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const mod = require('react-native-google-mobile-ads') as {
+    BannerAd: typeof BannerAdComponent;
+    BannerAdSize: { BANNER: string };
+  };
+  BannerAdComponent = mod.BannerAd;
+  BANNER_SIZE = mod.BannerAdSize.BANNER;
+} catch {
+  // Expo Go: react-native-google-mobile-ads native module not registered
 }
 
 export function AdBanner(): React.JSX.Element | null {
