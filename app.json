@@ -57,7 +57,11 @@
         {
           "url": "https://sentry.io/",
           "project": "react-native",
-          "organization": "josephs-organization-en"
+          "organization": "josephs-organization-en",
+          "authToken": {
+            "_coerce": "string",
+            "_value": "$SENTRY_AUTH_TOKEN"
+          }
         }
       ]
     ],

@@ -14,7 +14,10 @@
       },
       "env": {
         "EXPO_PUBLIC_SUPABASE_URL": "https://lefjnvaxiczwhqxaurrv.supabase.co",
-        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_UGRiOmOBzZjMqV9SsDRLNQ_HIFdtMc_"
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_UGRiOmOBzZjMqV9SsDRLNQ_HIFdtMc_",
+        "EXPO_PUBLIC_SENTRY_DSN": "https://f8c622a303b5046ef156bade83625c9f@o4511658401005568.ingest.de.sentry.io/4511658428465232",
+        "EXPO_PUBLIC_ADMOB_ANDROID_BANNER_ID": "ca-app-pub-3940256099942544/6300978111",
+        "EXPO_PUBLIC_ADMOB_TEST_BANNER_ID": "ca-app-pub-3940256099942544/6300978111"
       }
     },
     "preview": {
@@ -25,7 +28,10 @@
       },
       "env": {
         "EXPO_PUBLIC_SUPABASE_URL": "https://lefjnvaxiczwhqxaurrv.supabase.co",
-        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_UGRiOmOBzZjMqV9SsDRLNQ_HIFdtMc_"
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_UGRiOmOBzZjMqV9SsDRLNQ_HIFdtMc_",
+        "EXPO_PUBLIC_SENTRY_DSN": "https://f8c622a303b5046ef156bade83625c9f@o4511658401005568.ingest.de.sentry.io/4511658428465232",
+        "EXPO_PUBLIC_ADMOB_ANDROID_BANNER_ID": "ca-app-pub-5469850868838947/3385455049",
+        "EXPO_PUBLIC_ADMOB_TEST_BANNER_ID": "ca-app-pub-3940256099942544/6300978111"
       }
     },
     "production": {
@@ -36,7 +42,10 @@
       },
       "env": {
         "EXPO_PUBLIC_SUPABASE_URL": "https://lefjnvaxiczwhqxaurrv.supabase.co",
-        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_UGRiOmOBzZjMqV9SsDRLNQ_HIFdtMc_"
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_UGRiOmOBzZjMqV9SsDRLNQ_HIFdtMc_",
+        "EXPO_PUBLIC_SENTRY_DSN": "https://f8c622a303b5046ef156bade83625c9f@o4511658401005568.ingest.de.sentry.io/4511658428465232",
+        "EXPO_PUBLIC_ADMOB_ANDROID_BANNER_ID": "ca-app-pub-5469850868838947/3385455049",
+        "EXPO_PUBLIC_ADMOB_TEST_BANNER_ID": "ca-app-pub-3940256099942544/6300978111"
       }
     }
   },
