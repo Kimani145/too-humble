@@ -183,6 +183,18 @@ export type Database = {
         Update: never;
         Relationships: [];
       };
+      bible_highlights: {
+        Row: BibleHighlight;
+        Insert: BibleHighlightInsert;
+        Update: BibleHighlightUpdate;
+        Relationships: [];
+      };
+      bible_notes: {
+        Row: BibleNote;
+        Insert: BibleNoteInsert;
+        Update: BibleNoteUpdate;
+        Relationships: [];
+      };
     };
     Views: Record<never, never>;
     Functions: Record<never, never>;
@@ -279,6 +291,71 @@ export interface BiblePreferences {
   translationId:  string;
   selectedBookId: string | null;    // AOLabBook.id
   selectedChapter: number | null;
+}
+
+export type BibleHighlight = {
+  id:             string;
+  user_id:        string;
+  translation_id: string;
+  book_id:        string;
+  book_name:      string;
+  chapter:        number;
+  verse_number:   number;
+  verse_text:     string;
+  color:          string;
+  created_at:     string;
+  updated_at:     string;
+};
+
+export type BibleHighlightInsert = {
+  id?: string;
+  user_id: string;
+  translation_id?: string;
+  book_id: string;
+  book_name: string;
+  chapter: number;
+  verse_number: number;
+  verse_text: string;
+  color?: string;
+  created_at?: string;
+  updated_at?: string;
+};
+
+export type BibleHighlightUpdate = Partial<BibleHighlightInsert>;
+
+export type BibleNote = {
+  id:             string;
+  user_id:        string;
+  translation_id: string;
+  book_id:        string;
+  book_name:      string;
+  chapter:        number;
+  verse_number:   number;
+  verse_text:     string;
+  note_text:      string;
+  created_at:     string;
+  updated_at:     string;
+};
+
+export type BibleNoteInsert = {
+  id?: string;
+  user_id: string;
+  translation_id?: string;
+  book_id: string;
+  book_name: string;
+  chapter: number;
+  verse_number: number;
+  verse_text: string;
+  note_text: string;
+  created_at?: string;
+  updated_at?: string;
+};
+
+export type BibleNoteUpdate = Partial<BibleNoteInsert>;
+
+export interface ChapterAnnotations {
+  highlights: BibleHighlight[];  // all highlights for this chapter
+  notes:      BibleNote[];       // all notes for this chapter
 }
 
 // -----------------------------------------------------------------------
