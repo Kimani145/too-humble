@@ -524,9 +524,10 @@ export default function HomeScreen(): React.JSX.Element {
               ? {
                   pathname: '/(tabs)/bible',
                   params: {
-                    book: v.book,
+                    book:    v.book,
                     chapter: String(v.chapter),
-                    verse: String(v.verse),
+                    verse:   String(v.verse),
+                    _t:      String(Date.now()),
                   },
                 }
               : '/(tabs)/bible'

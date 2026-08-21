@@ -22,7 +22,7 @@ import {
   Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useLocalSearchParams } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import {
   fetchBooks,
   fetchChapter,
@@ -37,7 +37,20 @@ import {
   AOLabBook,
   AOLabChapter,
   AOLabContentItem,
+  ChapterAnnotations,
+  BibleHighlight,
+  BibleNote,
 } from '../../types/database.types';
+import {
+  getChapterAnnotations,
+  upsertHighlight,
+  removeHighlight,
+  upsertNote,
+  removeNote,
+} from '../../services/annotationService';
+import { VerseActionSheet } from '../../components/bible/VerseActionSheet';
+import { NoteEditorModal } from '../../components/bible/NoteEditorModal';
+import { useAuth } from '../../context/AuthContext';
 import { recordChapterRead } from '../../services/streakService';
 import { BUNDLED_TRANSLATIONS, DEUTEROCANONICAL_COMMON_NAMES, DEFAULT_TRANSLATION_ID, BibleTranslationMeta } from '../../constants/bibleTranslations';
 import { useTheme, AppColors } from '../../context/ThemeContext';
@@ -107,9 +120,19 @@ interface ContentItemProps {
   item: AOLabContentItem;
   fontSize: number;
   isHighlighted?: boolean;
+  highlightColor?: string;
+  hasNote?: boolean;
+  onLongPress?: (number: number, text: string) => void;
 }
 
-function ContentItem({ item, fontSize, isHighlighted }: ContentItemProps): React.JSX.Element {
+function ContentItem({
+  item,
+  fontSize,
+  isHighlighted,
+  highlightColor,
+  hasNote,
+  onLongPress,
+}: ContentItemProps): React.JSX.Element {
   const { colors } = useTheme();
   const styles = getVerseStyles(colors);
 
@@ -120,25 +143,42 @@ function ContentItem({ item, fontSize, isHighlighted }: ContentItemProps): React
       .replace(/\s+/g, ' ')
       .trim();
     return (
-      <View
+      <TouchableOpacity
+        activeOpacity={0.8}
+        onLongPress={() => onLongPress?.(item.number, text)}
         style={[
           styles.container,
-          isHighlighted && {
-            backgroundColor: colors.primary + '1F',
-            borderColor: colors.primary,
-            borderWidth: 1.5,
+          {
+            backgroundColor: highlightColor ? `${highlightColor}33` : (isHighlighted ? colors.primary + '1F' : 'transparent'),
+            borderColor: highlightColor ? highlightColor : (isHighlighted ? colors.primary : 'transparent'),
+            borderWidth: isHighlighted || highlightColor ? 1.5 : 0,
             borderRadius: BORDER_RADIUS.md,
             padding: SPACING.xs,
           },
         ]}
       >
-        <Text style={[styles.verseNum, { fontSize: fontSize - 2, color: colors.primary, fontWeight: isHighlighted ? '800' : '600' }]}>
-          {item.number} {isHighlighted ? '📍' : ''}
-        </Text>
+        <View style={{ position: 'relative' }}>
+          <Text style={[styles.verseNum, { fontSize: fontSize - 2, color: colors.primary, fontWeight: isHighlighted ? '800' : '600' }]}>
+            {item.number} {isHighlighted ? '📍' : ''}
+          </Text>
+          {hasNote ? (
+            <View
+              style={{
+                position: 'absolute',
+                top: 2,
+                right: 2,
+                width: 6,
+                height: 6,
+                borderRadius: 3,
+                backgroundColor: colors.accent,
+              }}
+            />
+          ) : null}
+        </View>
         <Text style={[styles.verseText, { fontSize, lineHeight: fontSize * 1.7, color: colors.textPrimary }]}>
           {text}
         </Text>
-      </View>
+      </TouchableOpacity>
     );
   }
 
@@ -209,12 +249,19 @@ function QuickAccessWidget({ onQuickAccess, otBooks, ntBooks }: QuickAccessProps
 // BibleScreen
 // -----------------------------------------------------------------------
 export default function BibleScreen(): React.JSX.Element {
+  const router = useRouter();
+  const { user } = useAuth();
   const { colors } = useTheme();
   const bibleStyles = getBibleStyles(colors);
   const { isWide } = useWebLayout();
 
-  const routeParams = useLocalSearchParams<{ book?: string; bookId?: string; chapter?: string; verse?: string }>();
+  const routeParams = useLocalSearchParams<{ book?: string; bookId?: string; chapter?: string; verse?: string; _t?: string }>();
   const [highlightVerseNum, setHighlightVerseNum] = useState<number | null>(null);
+
+  const [annotations, setAnnotations] = useState<ChapterAnnotations>({ highlights: [], notes: [] });
+  const [actionSheetVerse, setActionSheetVerse] = useState<{ number: number; text: string } | null>(null);
+  const [showNoteEditor, setShowNoteEditor] = useState<boolean>(false);
+  const [isSavingAnnotation, setIsSavingAnnotation] = useState<boolean>(false);
 
   const [webFontSize, setWebFontSize] = useState<number>(16);
 
@@ -371,6 +418,15 @@ export default function BibleScreen(): React.JSX.Element {
       try {
         const data = await fetchChapter(tId, book.id, chapter);
         setChapterData(data);
+        if (user) {
+          const ann = await getChapterAnnotations(
+            user.id,
+            tId ?? translationId,
+            book.id,
+            chapter
+          );
+          setAnnotations(ann);
+        }
         recordChapterRead(book.commonName, chapter).catch(() => {});
         setSelectedChapter(chapter);
         setIsOffline(false);
@@ -392,7 +448,7 @@ export default function BibleScreen(): React.JSX.Element {
         setIsLoadingChapter(false);
       }
     },
-    [translationId]
+    [translationId, user]
   );
 
   const handleBookPress = useCallback((book: AOLabBook): void => {
@@ -484,7 +540,14 @@ export default function BibleScreen(): React.JSX.Element {
         loadChapter(found, targetChapterNum, translationId);
       }
     }
-  }, [routeParams.book, routeParams.bookId, routeParams.chapter, routeParams.verse, otBooks, ntBooks, translationId, loadChapter]);
+  }, [routeParams.book, routeParams.bookId, routeParams.chapter, routeParams.verse, routeParams._t, otBooks, ntBooks, translationId, loadChapter]);
+
+  const highlightMap = new Map<number, BibleHighlight>(
+    annotations.highlights.map((h) => [h.verse_number, h])
+  );
+  const noteMap = new Map<number, BibleNote>(
+    annotations.notes.map((n) => [n.verse_number, n])
+  );
 
   const renderContentItem = useCallback(
     ({ item }: ListRenderItemInfo<AOLabContentItem>): React.JSX.Element => (
@@ -492,9 +555,12 @@ export default function BibleScreen(): React.JSX.Element {
         item={item}
         fontSize={fontSize}
         isHighlighted={item.type === 'verse' && item.number === highlightVerseNum}
+        highlightColor={item.type === 'verse' ? (highlightMap.get(item.number)?.color ?? undefined) : undefined}
+        hasNote={item.type === 'verse' ? noteMap.has(item.number) : false}
+        onLongPress={(number, text) => setActionSheetVerse({ number, text })}
       />
     ),
-    [fontSize, highlightVerseNum]
+    [fontSize, highlightVerseNum, highlightMap, noteMap]
   );
 
   // ----------------------------------------------------------------
@@ -611,6 +677,23 @@ export default function BibleScreen(): React.JSX.Element {
                 <Text style={bibleStyles.fontBtnText}>A+</Text>
               </TouchableOpacity>
             </View>
+
+            {/* My Notes button */}
+            <TouchableOpacity
+              onPress={() => router.push('/bible/my-annotations' as never)}
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: 18,
+                backgroundColor: colors.overlayLight,
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginLeft: 8,
+              }}
+              activeOpacity={0.7}
+            >
+              <Text style={{ fontSize: 18 }}>📝</Text>
+            </TouchableOpacity>
           </LinearGradient>
 
           <FlatList<AOLabContentItem>
@@ -619,6 +702,115 @@ export default function BibleScreen(): React.JSX.Element {
             keyExtractor={(_, index) => index.toString()}
             contentContainerStyle={bibleStyles.versesContent}
             showsVerticalScrollIndicator={false}
+          />
+
+          <VerseActionSheet
+            visible={actionSheetVerse !== null}
+            verseNumber={actionSheetVerse?.number ?? 0}
+            verseText={actionSheetVerse?.text ?? ''}
+            existingHighlight={actionSheetVerse ? (highlightMap.get(actionSheetVerse.number) ?? null) : null}
+            hasNote={actionSheetVerse ? noteMap.has(actionSheetVerse.number) : false}
+            onHighlight={async (color) => {
+              if (!user || !selectedBook || !selectedChapter || !actionSheetVerse) return;
+              setIsSavingAnnotation(true);
+              try {
+                await upsertHighlight(
+                  user.id,
+                  translationId,
+                  selectedBook.id,
+                  selectedBook.commonName,
+                  selectedChapter,
+                  actionSheetVerse.number,
+                  actionSheetVerse.text,
+                  color
+                );
+                const updated = await getChapterAnnotations(
+                  user.id,
+                  translationId,
+                  selectedBook.id,
+                  selectedChapter
+                );
+                setAnnotations(updated);
+              } finally {
+                setIsSavingAnnotation(false);
+                setActionSheetVerse(null);
+              }
+            }}
+            onRemoveHighlight={async () => {
+              if (!user || !selectedBook || !selectedChapter || !actionSheetVerse) return;
+              await removeHighlight(
+                user.id,
+                translationId,
+                selectedBook.id,
+                selectedChapter,
+                actionSheetVerse.number
+              );
+              const updated = await getChapterAnnotations(
+                user.id,
+                translationId,
+                selectedBook.id,
+                selectedChapter
+              );
+              setAnnotations(updated);
+              setActionSheetVerse(null);
+            }}
+            onAddNote={() => setShowNoteEditor(true)}
+            onClose={() => setActionSheetVerse(null)}
+          />
+
+          <NoteEditorModal
+            visible={showNoteEditor}
+            verseNumber={actionSheetVerse?.number ?? 0}
+            verseText={actionSheetVerse?.text ?? ''}
+            existingNote={actionSheetVerse ? (noteMap.get(actionSheetVerse.number)?.note_text ?? '') : ''}
+            isSaving={isSavingAnnotation}
+            onSave={async (text) => {
+              if (!user || !selectedBook || !selectedChapter || !actionSheetVerse) return;
+              setIsSavingAnnotation(true);
+              try {
+                await upsertNote(
+                  user.id,
+                  translationId,
+                  selectedBook.id,
+                  selectedBook.commonName,
+                  selectedChapter,
+                  actionSheetVerse.number,
+                  actionSheetVerse.text,
+                  text
+                );
+                const updated = await getChapterAnnotations(
+                  user.id,
+                  translationId,
+                  selectedBook.id,
+                  selectedChapter
+                );
+                setAnnotations(updated);
+              } finally {
+                setIsSavingAnnotation(false);
+                setShowNoteEditor(false);
+                setActionSheetVerse(null);
+              }
+            }}
+            onDelete={async () => {
+              if (!user || !selectedBook || !selectedChapter || !actionSheetVerse) return;
+              await removeNote(
+                user.id,
+                translationId,
+                selectedBook.id,
+                selectedChapter,
+                actionSheetVerse.number
+              );
+              const updated = await getChapterAnnotations(
+                user.id,
+                translationId,
+                selectedBook.id,
+                selectedChapter
+              );
+              setAnnotations(updated);
+              setShowNoteEditor(false);
+              setActionSheetVerse(null);
+            }}
+            onClose={() => setShowNoteEditor(false)}
           />
 
           {/* Navigation Bar at Bottom of Chapter */}

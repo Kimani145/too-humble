@@ -9,6 +9,8 @@ let BannerAdComponent: React.ComponentType<{
   unitId: string;
   size: string;
   requestOptions?: { requestNonPersonalizedAdsOnly: boolean };
+  onAdLoaded?: () => void;
+  onAdFailedToLoad?: (error?: unknown) => void;
 }> | null = null;
 let BANNER_SIZE: string | null = null;
 
@@ -27,6 +29,7 @@ try {
 export function AdBanner(): React.JSX.Element | null {
   const [isDonor, setIsDonor] = useState<boolean>(false);
   const [checked, setChecked] = useState<boolean>(false);
+  const [adLoaded, setAdLoaded] = useState<boolean>(false);
 
   useEffect(() => {
     checkDonorStatus()
@@ -43,11 +46,13 @@ export function AdBanner(): React.JSX.Element | null {
   if (!checked || isDonor) return null; // Not ready or donor
 
   return (
-    <View style={{ alignItems: 'center', marginVertical: 8 }}>
+    <View style={{ alignItems: 'center', marginVertical: adLoaded ? 8 : 0 }}>
       <BannerAdComponent
         unitId={getBannerAdUnitId()}
         size={BANNER_SIZE}
         requestOptions={{ requestNonPersonalizedAdsOnly: false }}
+        onAdLoaded={() => setAdLoaded(true)}
+        onAdFailedToLoad={() => setAdLoaded(false)}
       />
     </View>
   );
