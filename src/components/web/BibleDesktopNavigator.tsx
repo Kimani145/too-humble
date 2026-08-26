@@ -113,15 +113,17 @@ function VerseRow({ item, fontSize, isHighlighted }: VerseRowProps): React.JSX.E
         style={[
           styles.verseRow,
           isHighlighted && {
-            backgroundColor: colors.primary + '1F',
-            borderColor: colors.primary,
-            borderWidth: 1.5,
-            borderRadius: 8,
-            padding: 6,
+            backgroundColor: colors.primary + '18',
+            borderLeftColor: colors.primary,
+            borderLeftWidth: 4,
+            borderRadius: 6,
+            paddingVertical: 8,
+            paddingHorizontal: 12,
+            marginVertical: 2,
           },
         ]}
       >
-        <Text style={[styles.verseNumber, { color: colors.accent, fontWeight: isHighlighted ? '800' : '600' }]}>
+        <Text style={[styles.verseNumber, { color: isHighlighted ? colors.primary : colors.textMuted, fontWeight: isHighlighted ? '800' : '600' }]}>
           {item.number} {isHighlighted ? '📍' : ''}
         </Text>
         <Text

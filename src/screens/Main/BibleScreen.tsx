@@ -20,6 +20,7 @@ import {
   StatusBar,
   ListRenderItemInfo,
   Platform,
+  Share,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -44,12 +45,15 @@ import {
 import {
   getChapterAnnotations,
   upsertHighlight,
+  upsertHighlightRange,
   removeHighlight,
+  removeHighlightRange,
   upsertNote,
   removeNote,
 } from '../../services/annotationService';
 import { VerseActionSheet } from '../../components/bible/VerseActionSheet';
 import { NoteEditorModal } from '../../components/bible/NoteEditorModal';
+import { FloatingActionBar } from '../../components/bible/FloatingActionBar';
 import { useAuth } from '../../context/AuthContext';
 import { recordChapterRead } from '../../services/streakService';
 import { BUNDLED_TRANSLATIONS, DEUTEROCANONICAL_COMMON_NAMES, DEFAULT_TRANSLATION_ID, BibleTranslationMeta } from '../../constants/bibleTranslations';
@@ -121,7 +125,9 @@ interface ContentItemProps {
   fontSize: number;
   isHighlighted?: boolean;
   highlightColor?: string;
+  isSelected?: boolean;
   hasNote?: boolean;
+  onPress?: (number: number, text: string) => void;
   onLongPress?: (number: number, text: string) => void;
 }
 
@@ -130,7 +136,9 @@ function ContentItem({
   fontSize,
   isHighlighted,
   highlightColor,
+  isSelected,
   hasNote,
+  onPress,
   onLongPress,
 }: ContentItemProps): React.JSX.Element {
   const { colors } = useTheme();
@@ -142,31 +150,70 @@ function ContentItem({
       .join(' ')
       .replace(/\s+/g, ' ')
       .trim();
+
+    // Psalmist-style left-accent highlight bar + translucent tint
+    const hasHighlight = Boolean(highlightColor);
+    const bgTint = isSelected
+      ? `${colors.primary}22`
+      : hasHighlight
+      ? `${highlightColor}28`
+      : isHighlighted
+      ? `${colors.primary}18`
+      : 'transparent';
+
+    const borderLeftColor = hasHighlight
+      ? highlightColor
+      : isSelected
+      ? colors.primary
+      : 'transparent';
+    const borderLeftWidth = hasHighlight || isSelected ? 4 : 0;
+
+    const borderColor = isSelected
+      ? colors.primary
+      : isHighlighted
+      ? `${colors.primary}60`
+      : 'transparent';
+    const borderWidth = isSelected || isHighlighted ? 1.5 : 0;
+
     return (
       <TouchableOpacity
-        activeOpacity={0.8}
+        activeOpacity={0.7}
+        onPress={() => onPress?.(item.number, text)}
         onLongPress={() => onLongPress?.(item.number, text)}
         style={[
           styles.container,
           {
-            backgroundColor: highlightColor ? `${highlightColor}33` : (isHighlighted ? colors.primary + '1F' : 'transparent'),
-            borderColor: highlightColor ? highlightColor : (isHighlighted ? colors.primary : 'transparent'),
-            borderWidth: isHighlighted || highlightColor ? 1.5 : 0,
-            borderRadius: BORDER_RADIUS.md,
-            padding: SPACING.xs,
+            backgroundColor: bgTint,
+            borderLeftColor,
+            borderLeftWidth,
+            borderColor,
+            borderWidth,
+            borderRadius: hasHighlight || isSelected || isHighlighted ? BORDER_RADIUS.md : 0,
+            marginVertical: hasHighlight || isSelected || isHighlighted ? 2 : 0,
+            paddingVertical: SPACING.xs + 2,
+            paddingHorizontal: SPACING.sm,
           },
         ]}
       >
-        <View style={{ position: 'relative' }}>
-          <Text style={[styles.verseNum, { fontSize: fontSize - 2, color: colors.primary, fontWeight: isHighlighted ? '800' : '600' }]}>
+        <View style={{ position: 'relative', marginRight: 10, minWidth: 26 }}>
+          <Text
+            style={[
+              styles.verseNum,
+              {
+                fontSize: fontSize - 3,
+                color: isSelected ? colors.primary : colors.textMuted,
+                fontWeight: isHighlighted || isSelected ? '800' : '600',
+              },
+            ]}
+          >
             {item.number} {isHighlighted ? '📍' : ''}
           </Text>
           {hasNote ? (
             <View
               style={{
                 position: 'absolute',
-                top: 2,
-                right: 2,
+                top: 0,
+                right: 0,
                 width: 6,
                 height: 6,
                 borderRadius: 3,
@@ -175,7 +222,16 @@ function ContentItem({
             />
           ) : null}
         </View>
-        <Text style={[styles.verseText, { fontSize, lineHeight: fontSize * 1.7, color: colors.textPrimary }]}>
+        <Text
+          style={[
+            styles.verseText,
+            {
+              fontSize,
+              lineHeight: fontSize * 1.7,
+              color: colors.textPrimary,
+            },
+          ]}
+        >
           {text}
         </Text>
       </TouchableOpacity>
@@ -259,6 +315,8 @@ export default function BibleScreen(): React.JSX.Element {
   const [highlightVerseNum, setHighlightVerseNum] = useState<number | null>(null);
 
   const [annotations, setAnnotations] = useState<ChapterAnnotations>({ highlights: [], notes: [] });
+  const [selectedRange, setSelectedRange] = useState<{ startVerse: number; endVerse: number } | null>(null);
+  const [pendingStartVerse, setPendingStartVerse] = useState<number | null>(null);
   const [actionSheetVerse, setActionSheetVerse] = useState<{ number: number; text: string } | null>(null);
   const [showNoteEditor, setShowNoteEditor] = useState<boolean>(false);
   const [isSavingAnnotation, setIsSavingAnnotation] = useState<boolean>(false);
@@ -553,18 +611,158 @@ export default function BibleScreen(): React.JSX.Element {
     }
   }
 
+  const handleVersePress = useCallback((verseNum: number) => {
+    if (pendingStartVerse === null) {
+      setPendingStartVerse(verseNum);
+      setSelectedRange({ startVerse: verseNum, endVerse: verseNum });
+    } else if (pendingStartVerse === verseNum) {
+      if (selectedRange?.startVerse === verseNum && selectedRange?.endVerse === verseNum) {
+        setPendingStartVerse(null);
+        setSelectedRange(null);
+      } else {
+        setSelectedRange({ startVerse: verseNum, endVerse: verseNum });
+        setPendingStartVerse(null);
+      }
+    } else {
+      const start = Math.min(pendingStartVerse, verseNum);
+      const end = Math.max(pendingStartVerse, verseNum);
+      setSelectedRange({ startVerse: start, endVerse: end });
+      setPendingStartVerse(null);
+    }
+  }, [pendingStartVerse, selectedRange]);
+
+  const clearSelection = useCallback(() => {
+    setPendingStartVerse(null);
+    setSelectedRange(null);
+  }, []);
+
+  const getSelectedVerseTexts = useCallback((): { verseNumber: number; verseText: string }[] => {
+    if (!selectedRange || !chapterData) return [];
+    const results: { verseNumber: number; verseText: string }[] = [];
+    for (const item of chapterData.content) {
+      if (
+        item.type === 'verse' &&
+        item.number >= selectedRange.startVerse &&
+        item.number <= selectedRange.endVerse
+      ) {
+        const text = item.content
+          .map((c) => (typeof c === 'string' ? c : c.text || ''))
+          .join(' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+        results.push({ verseNumber: item.number, verseText: text });
+      }
+    }
+    return results;
+  }, [selectedRange, chapterData]);
+
+  const handleApplyHighlightRange = useCallback(
+    async (colorHex: string) => {
+      if (!user || !selectedBook || selectedChapter === null || !selectedRange) return;
+      const verses = getSelectedVerseTexts();
+      if (verses.length === 0) return;
+      setIsSavingAnnotation(true);
+      try {
+        await upsertHighlightRange(
+          user.id,
+          translationId,
+          selectedBook.id,
+          selectedBook.commonName,
+          selectedChapter,
+          verses,
+          colorHex
+        );
+        const updated = await getChapterAnnotations(
+          user.id,
+          translationId,
+          selectedBook.id,
+          selectedChapter
+        );
+        setAnnotations(updated);
+      } finally {
+        setIsSavingAnnotation(false);
+        clearSelection();
+      }
+    },
+    [user, selectedBook, selectedChapter, selectedRange, getSelectedVerseTexts, translationId, clearSelection]
+  );
+
+  const handleRemoveHighlightRange = useCallback(async () => {
+    if (!user || !selectedBook || selectedChapter === null || !selectedRange) return;
+    const verseNumbers = Array.from(
+      { length: selectedRange.endVerse - selectedRange.startVerse + 1 },
+      (_, i) => selectedRange.startVerse + i
+    );
+    setIsSavingAnnotation(true);
+    try {
+      await removeHighlightRange(
+        user.id,
+        translationId,
+        selectedBook.id,
+        selectedChapter,
+        verseNumbers
+      );
+      const updated = await getChapterAnnotations(
+        user.id,
+        translationId,
+        selectedBook.id,
+        selectedChapter
+      );
+      setAnnotations(updated);
+    } finally {
+      setIsSavingAnnotation(false);
+      clearSelection();
+    }
+  }, [user, selectedBook, selectedChapter, selectedRange, translationId, clearSelection]);
+
+  const handleShareRange = useCallback(async () => {
+    if (!selectedBook || selectedChapter === null || !selectedRange) return;
+    const verses = getSelectedVerseTexts();
+    const joinedText = verses.map((v) => `${v.verseNumber}. ${v.verseText}`).join(' ');
+    const rangeLabel =
+      selectedRange.startVerse === selectedRange.endVerse
+        ? `v. ${selectedRange.startVerse}`
+        : `vv. ${selectedRange.startVerse}–${selectedRange.endVerse}`;
+
+    try {
+      await Share.share({
+        title: `${selectedBook.commonName} ${selectedChapter}:${rangeLabel}`,
+        message: `"${joinedText}"\n— ${selectedBook.commonName} ${selectedChapter}:${rangeLabel} (${translationId})\n\nShared from Too Humble 🙏`,
+      });
+    } catch {
+      // ignore
+    } finally {
+      clearSelection();
+    }
+  }, [selectedBook, selectedChapter, selectedRange, getSelectedVerseTexts, translationId, clearSelection]);
+
   const renderContentItem = useCallback(
-    ({ item }: ListRenderItemInfo<AOLabContentItem>): React.JSX.Element => (
-      <ContentItem
-        item={item}
-        fontSize={fontSize}
-        isHighlighted={item.type === 'verse' && item.number === highlightVerseNum}
-        highlightColor={item.type === 'verse' ? (highlightMap.get(item.number)?.color ?? undefined) : undefined}
-        hasNote={item.type === 'verse' ? noteMap.has(item.number) : false}
-        onLongPress={(number, text) => setActionSheetVerse({ number, text })}
-      />
-    ),
-    [fontSize, highlightVerseNum, highlightMap, noteMap]
+    ({ item }: ListRenderItemInfo<AOLabContentItem>): React.JSX.Element => {
+      const inSelection = Boolean(
+        selectedRange &&
+        item.type === 'verse' &&
+        item.number >= selectedRange.startVerse &&
+        item.number <= selectedRange.endVerse
+      );
+
+      return (
+        <ContentItem
+          item={item}
+          fontSize={fontSize}
+          isHighlighted={item.type === 'verse' && item.number === highlightVerseNum}
+          highlightColor={item.type === 'verse' ? (highlightMap.get(item.number)?.color ?? undefined) : undefined}
+          isSelected={inSelection}
+          hasNote={item.type === 'verse' ? noteMap.has(item.number) : false}
+          onPress={(number) => handleVersePress(number)}
+          onLongPress={(number, text) => {
+            setSelectedRange({ startVerse: number, endVerse: number });
+            setPendingStartVerse(null);
+            setActionSheetVerse({ number, text });
+          }}
+        />
+      );
+    },
+    [fontSize, highlightVerseNum, highlightMap, noteMap, selectedRange, handleVersePress]
   );
 
   // ----------------------------------------------------------------
@@ -708,8 +906,37 @@ export default function BibleScreen(): React.JSX.Element {
             showsVerticalScrollIndicator={false}
           />
 
+          {/* Psalmist-style Floating Action Bar */}
+          {selectedRange && actionSheetVerse === null && !showNoteEditor ? (
+            <FloatingActionBar
+              startVerse={selectedRange.startVerse}
+              endVerse={selectedRange.endVerse}
+              isHighlighted={Array.from(
+                { length: selectedRange.endVerse - selectedRange.startVerse + 1 },
+                (_, i) => selectedRange.startVerse + i
+              ).some((v) => highlightMap.has(v))}
+              hasNote={Array.from(
+                { length: selectedRange.endVerse - selectedRange.startVerse + 1 },
+                (_, i) => selectedRange.startVerse + i
+              ).some((v) => noteMap.has(v))}
+              onApplyHighlight={handleApplyHighlightRange}
+              onRemoveHighlight={handleRemoveHighlightRange}
+              onOpenNoteModal={() => {
+                const verses = getSelectedVerseTexts();
+                const snippet = verses.map((v) => v.verseText).join(' ');
+                setActionSheetVerse({
+                  number: selectedRange.startVerse,
+                  text: snippet,
+                });
+                setShowNoteEditor(true);
+              }}
+              onShare={handleShareRange}
+              onClearSelection={clearSelection}
+            />
+          ) : null}
+
           <VerseActionSheet
-            visible={actionSheetVerse !== null}
+            visible={actionSheetVerse !== null && !showNoteEditor}
             verseNumber={actionSheetVerse?.number ?? 0}
             verseText={actionSheetVerse?.text ?? ''}
             existingHighlight={actionSheetVerse ? (highlightMap.get(actionSheetVerse.number) ?? null) : null}

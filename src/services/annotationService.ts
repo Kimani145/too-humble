@@ -47,6 +47,7 @@ export async function getChapterAnnotations(
 }
 
 // ── Upsert highlight ──────────────────────────────────────────────────────────
+// ── Upsert highlight (single or range) ────────────────────────────────────────
 export async function upsertHighlight(
   userId: string,
   translationId: string,
@@ -86,6 +87,49 @@ export async function upsertHighlight(
   if (insertError) throw insertError;
 }
 
+export async function upsertHighlightRange(
+  userId: string,
+  translationId: string,
+  bookId: string,
+  bookName: string,
+  chapter: number,
+  verses: { verseNumber: number; verseText: string }[],
+  color: string
+): Promise<void> {
+  if (verses.length === 0) return;
+  const verseNumbers = verses.map((v) => v.verseNumber);
+
+  // Step 1: soft-delete any existing active highlights for these verses
+  const { error: softDeleteError } = await supabase
+    .from('bible_highlights')
+    .update({ deleted_at: new Date().toISOString() })
+    .eq('user_id', userId)
+    .eq('translation_id', translationId)
+    .eq('book_id', bookId)
+    .eq('chapter', chapter)
+    .in('verse_number', verseNumbers)
+    .is('deleted_at', null);
+  if (softDeleteError) throw softDeleteError;
+
+  // Step 2: insert new highlights for each verse
+  const inserts = verses.map((v) => ({
+    user_id: userId,
+    translation_id: translationId,
+    book_id: bookId,
+    book_name: bookName,
+    chapter,
+    verse_number: v.verseNumber,
+    verse_text: v.verseText,
+    color,
+    deleted_at: null,
+  }));
+
+  const { error: insertError } = await supabase
+    .from('bible_highlights')
+    .insert(inserts);
+  if (insertError) throw insertError;
+}
+
 // ── Remove highlight ──────────────────────────────────────────────────────────
 export async function removeHighlight(
   userId: string,
@@ -102,6 +146,26 @@ export async function removeHighlight(
     .eq('book_id', bookId)
     .eq('chapter', chapter)
     .eq('verse_number', verseNumber)
+    .is('deleted_at', null);
+  if (error) throw error;
+}
+
+export async function removeHighlightRange(
+  userId: string,
+  translationId: string,
+  bookId: string,
+  chapter: number,
+  verseNumbers: number[]
+): Promise<void> {
+  if (verseNumbers.length === 0) return;
+  const { error } = await supabase
+    .from('bible_highlights')
+    .update({ deleted_at: new Date().toISOString() })
+    .eq('user_id', userId)
+    .eq('translation_id', translationId)
+    .eq('book_id', bookId)
+    .eq('chapter', chapter)
+    .in('verse_number', verseNumbers)
     .is('deleted_at', null);
   if (error) throw error;
 }
