@@ -4,11 +4,10 @@ import { useAdminAuth } from './hooks/useAdminAuth';
 import Layout from './components/Layout';
 import Login from './pages/Login';
 import Overview from './pages/Overview';
-
-// Placeholder pages to be filled in PROMPT 2 and PROMPT 3:
-const PlaceholderPage = ({ title }: { title: string }): React.JSX.Element => (
-  <div className="text-2xl font-bold text-gray-900">{title}</div>
-);
+import Content from './pages/Content';
+import Moderation from './pages/Moderation';
+import Users from './pages/Users';
+import Ledger from './pages/Ledger';
 
 function AdminApp(): React.JSX.Element {
   const { isAdmin, isLoading } = useAdminAuth();
@@ -29,10 +28,10 @@ function AdminApp(): React.JSX.Element {
     <Layout>
       <Routes>
         <Route path="/"           element={<Overview />} />
-        <Route path="/content"    element={<PlaceholderPage title="Content" />} />
-        <Route path="/moderation" element={<PlaceholderPage title="Moderation" />} />
-        <Route path="/users"      element={<PlaceholderPage title="Users" />} />
-        <Route path="/ledger"     element={<PlaceholderPage title="Ledger" />} />
+        <Route path="/content"    element={<Content />} />
+        <Route path="/moderation" element={<Moderation />} />
+        <Route path="/users"      element={<Users />} />
+        <Route path="/ledger"     element={<Ledger />} />
         <Route path="*"           element={<Navigate to="/" replace />} />
       </Routes>
     </Layout>
