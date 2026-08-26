@@ -545,9 +545,13 @@ export default function BibleScreen(): React.JSX.Element {
   const highlightMap = new Map<number, BibleHighlight>(
     annotations.highlights.map((h) => [h.verse_number, h])
   );
-  const noteMap = new Map<number, BibleNote>(
-    annotations.notes.map((n) => [n.verse_number, n])
-  );
+  const noteMap = new Map<number, BibleNote>();
+  for (const note of annotations.notes) {
+    const end = note.verse_end ?? note.verse_number;
+    for (let v = note.verse_number; v <= end; v++) {
+      noteMap.set(v, note);
+    }
+  }
 
   const renderContentItem = useCallback(
     ({ item }: ListRenderItemInfo<AOLabContentItem>): React.JSX.Element => (
@@ -763,8 +767,14 @@ export default function BibleScreen(): React.JSX.Element {
             verseNumber={actionSheetVerse?.number ?? 0}
             verseText={actionSheetVerse?.text ?? ''}
             existingNote={actionSheetVerse ? (noteMap.get(actionSheetVerse.number)?.note_text ?? '') : ''}
+            totalVerses={chapterData?.numberOfVerses ?? 150}
+            existingVerseEnd={
+              actionSheetVerse
+                ? (noteMap.get(actionSheetVerse.number)?.verse_end ?? undefined)
+                : undefined
+            }
             isSaving={isSavingAnnotation}
-            onSave={async (text) => {
+            onSave={async (text, verseEnd) => {
               if (!user || !selectedBook || !selectedChapter || !actionSheetVerse) return;
               setIsSavingAnnotation(true);
               try {
@@ -776,7 +786,8 @@ export default function BibleScreen(): React.JSX.Element {
                   selectedChapter,
                   actionSheetVerse.number,
                   actionSheetVerse.text,
-                  text
+                  text,
+                  verseEnd
                 );
                 const updated = await getChapterAnnotations(
                   user.id,

@@ -14,14 +14,16 @@ import {
 import { useTheme } from '../../context/ThemeContext';
 
 export interface NoteEditorModalProps {
-  visible:       boolean;
-  verseNumber:   number;
-  verseText:     string;
-  existingNote:  string;     // '' if no note yet
-  isSaving:      boolean;
-  onSave:        (text: string) => void;
-  onDelete:      () => void;
-  onClose:       () => void;
+  visible:          boolean;
+  verseNumber:      number;
+  verseText:        string;
+  existingNote:     string;     // '' if no note yet
+  totalVerses:      number;     // chapter's total verse count — for range picker upper bound
+  existingVerseEnd?: number;    // pre-populated when editing an existing range note
+  isSaving:         boolean;
+  onSave:           (text: string, verseEnd: number) => void;
+  onDelete:         () => void;
+  onClose:          () => void;
 }
 
 export function NoteEditorModal({
@@ -29,6 +31,8 @@ export function NoteEditorModal({
   verseNumber,
   verseText,
   existingNote,
+  totalVerses,
+  existingVerseEnd,
   isSaving,
   onSave,
   onDelete,
@@ -36,12 +40,16 @@ export function NoteEditorModal({
 }: NoteEditorModalProps): React.JSX.Element {
   const { colors } = useTheme();
   const [noteText, setNoteText] = useState<string>(existingNote);
+  const [verseEnd, setVerseEnd] = useState<number>(
+    existingVerseEnd ?? verseNumber
+  );
 
   useEffect(() => {
     if (visible) {
       setNoteText(existingNote);
+      setVerseEnd(existingVerseEnd ?? verseNumber);
     }
-  }, [visible, existingNote]);
+  }, [visible, existingNote, existingVerseEnd, verseNumber]);
 
   return (
     <Modal
@@ -66,11 +74,13 @@ export function NoteEditorModal({
             </TouchableOpacity>
 
             <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>
-              Note (v. {verseNumber})
+              {verseNumber === verseEnd
+                ? `Note (v. ${verseNumber})`
+                : `Note (vv. ${verseNumber}–${verseEnd})`}
             </Text>
 
             <TouchableOpacity
-              onPress={() => onSave(noteText)}
+              onPress={() => onSave(noteText, verseEnd)}
               disabled={isSaving}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
@@ -96,6 +106,61 @@ export function NoteEditorModal({
               style={[styles.verseText, { color: colors.textMuted }]}
             >
               "{verseText}"
+            </Text>
+          </View>
+
+          {/* Verse range selector row */}
+          <View
+            style={[
+              styles.rangeRow,
+              { borderBottomColor: colors.border, backgroundColor: colors.backgroundCard },
+            ]}
+          >
+            <Text style={[styles.rangeLabel, { color: colors.textPrimary }]}>
+              Verse {verseNumber}
+            </Text>
+            <Text style={[styles.rangeToText, { color: colors.textMuted }]}>
+              {' to '}
+            </Text>
+            <View style={styles.rangeControls}>
+              <TouchableOpacity
+                onPress={() => setVerseEnd((v) => Math.max(verseNumber, v - 1))}
+                disabled={verseEnd <= verseNumber}
+                style={[
+                  styles.rangeBtn,
+                  { backgroundColor: colors.lightGray },
+                  verseEnd <= verseNumber && styles.rangeBtnDisabled,
+                ]}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Text style={[styles.rangeBtnText, { color: colors.textPrimary }]}>−</Text>
+              </TouchableOpacity>
+
+              <Text style={[styles.rangeValueText, { color: colors.primary }]}>
+                {verseEnd}
+              </Text>
+
+              <TouchableOpacity
+                onPress={() => setVerseEnd((v) => Math.min(totalVerses, v + 1))}
+                disabled={verseEnd >= totalVerses}
+                style={[
+                  styles.rangeBtn,
+                  { backgroundColor: colors.lightGray },
+                  verseEnd >= totalVerses && styles.rangeBtnDisabled,
+                ]}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Text style={[styles.rangeBtnText, { color: colors.textPrimary }]}>+</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* Helper text */}
+          <View style={{ backgroundColor: colors.backgroundCard }}>
+            <Text style={[styles.rangeHelperText, { color: colors.textMuted }]}>
+              Highlight covers {verseNumber === verseEnd
+                ? 'verse ' + verseNumber
+                : 'verses ' + verseNumber + '–' + verseEnd}
             </Text>
           </View>
 
@@ -172,6 +237,51 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontStyle: 'italic',
     lineHeight: 18,
+  },
+  rangeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+  },
+  rangeLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  rangeToText: {
+    fontSize: 13,
+  },
+  rangeControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  rangeBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rangeBtnDisabled: {
+    opacity: 0.4,
+  },
+  rangeBtnText: {
+    fontSize: 16,
+    fontWeight: '700',
+    lineHeight: 18,
+  },
+  rangeValueText: {
+    fontSize: 15,
+    fontWeight: '700',
+    minWidth: 28,
+    textAlign: 'center',
+  },
+  rangeHelperText: {
+    fontSize: 11,
+    paddingHorizontal: 20,
+    paddingVertical: 8,
   },
   textInput: {
     flex: 1,
