@@ -4,52 +4,57 @@ import { BibleHighlight, BibleNote, ChapterAnnotations } from '../types/database
 import { annotationCacheKey } from '../constants/bibleAnnotations';
 
 // ── Fetch all annotations for a chapter (highlights + notes) ──────────────────
-// Strategy: try network, fall back to cache. Always updates cache on success.
+// Strategy: local cache first / fallback + cloud sync when authenticated.
 export async function getChapterAnnotations(
-  userId: string,
+  userId: string | null | undefined,
   translationId: string,
   bookId: string,
   chapter: number
 ): Promise<ChapterAnnotations> {
-  const cacheKey = annotationCacheKey(userId, translationId, bookId, chapter);
+  const effectiveUserId = userId || 'guest';
+  const cacheKey = annotationCacheKey(effectiveUserId, translationId, bookId, chapter);
+
+  if (userId && userId !== 'guest') {
+    try {
+      const [hlRes, noteRes] = await Promise.all([
+        supabase.from('bible_highlights').select('*')
+          .eq('user_id', userId)
+          .eq('translation_id', translationId)
+          .eq('book_id', bookId)
+          .eq('chapter', chapter)
+          .is('deleted_at', null),
+        supabase.from('bible_notes').select('*')
+          .eq('user_id', userId)
+          .eq('translation_id', translationId)
+          .eq('book_id', bookId)
+          .eq('chapter', chapter),
+      ]);
+
+      if (!hlRes.error && !noteRes.error) {
+        const result: ChapterAnnotations = {
+          highlights: (hlRes.data ?? []) as BibleHighlight[],
+          notes:      (noteRes.data ?? []) as BibleNote[],
+        };
+        await AsyncStorage.setItem(cacheKey, JSON.stringify(result));
+        return result;
+      }
+    } catch {
+      // Fall through to local cache
+    }
+  }
 
   try {
-    const [hlRes, noteRes] = await Promise.all([
-      supabase.from('bible_highlights').select('*')
-        .eq('user_id', userId)
-        .eq('translation_id', translationId)
-        .eq('book_id', bookId)
-        .eq('chapter', chapter)
-        .is('deleted_at', null),
-      supabase.from('bible_notes').select('*')
-        .eq('user_id', userId)
-        .eq('translation_id', translationId)
-        .eq('book_id', bookId)
-        .eq('chapter', chapter),
-    ]);
-
-    if (hlRes.error) throw hlRes.error;
-    if (noteRes.error) throw noteRes.error;
-
-    const result: ChapterAnnotations = {
-      highlights: (hlRes.data ?? []) as BibleHighlight[],
-      notes:      (noteRes.data ?? []) as BibleNote[],
-    };
-    // Update cache
-    await AsyncStorage.setItem(cacheKey, JSON.stringify(result));
-    return result;
-  } catch {
-    // Network failed — try cache
     const raw = await AsyncStorage.getItem(cacheKey);
     if (raw) return JSON.parse(raw) as ChapterAnnotations;
-    return { highlights: [], notes: [] };
+  } catch {
+    // ignore
   }
+  return { highlights: [], notes: [] };
 }
 
-// ── Upsert highlight ──────────────────────────────────────────────────────────
 // ── Upsert highlight (single or range) ────────────────────────────────────────
 export async function upsertHighlight(
-  userId: string,
+  userId: string | null | undefined,
   translationId: string,
   bookId: string,
   bookName: string,
@@ -58,37 +63,19 @@ export async function upsertHighlight(
   verseText: string,
   color: string
 ): Promise<void> {
-  // Step 1: soft-delete any existing active highlight for this verse
-  const { error: softDeleteError } = await supabase
-    .from('bible_highlights')
-    .update({ deleted_at: new Date().toISOString() })
-    .eq('user_id', userId)
-    .eq('translation_id', translationId)
-    .eq('book_id', bookId)
-    .eq('chapter', chapter)
-    .eq('verse_number', verseNumber)
-    .is('deleted_at', null);
-  if (softDeleteError) throw softDeleteError;
-
-  // Step 2: insert the new highlight
-  const { error: insertError } = await supabase
-    .from('bible_highlights')
-    .insert({
-      user_id: userId,
-      translation_id: translationId,
-      book_id: bookId,
-      book_name: bookName,
-      chapter,
-      verse_number: verseNumber,
-      verse_text: verseText,
-      color,
-      deleted_at: null,
-    });
-  if (insertError) throw insertError;
+  await upsertHighlightRange(
+    userId,
+    translationId,
+    bookId,
+    bookName,
+    chapter,
+    [{ verseNumber, verseText }],
+    color
+  );
 }
 
 export async function upsertHighlightRange(
-  userId: string,
+  userId: string | null | undefined,
   translationId: string,
   bookId: string,
   bookName: string,
@@ -97,77 +84,133 @@ export async function upsertHighlightRange(
   color: string
 ): Promise<void> {
   if (verses.length === 0) return;
+  const effectiveUserId = userId || 'guest';
+  const cacheKey = annotationCacheKey(effectiveUserId, translationId, bookId, chapter);
   const verseNumbers = verses.map((v) => v.verseNumber);
 
-  // Step 1: soft-delete any existing active highlights for these verses
-  const { error: softDeleteError } = await supabase
-    .from('bible_highlights')
-    .update({ deleted_at: new Date().toISOString() })
-    .eq('user_id', userId)
-    .eq('translation_id', translationId)
-    .eq('book_id', bookId)
-    .eq('chapter', chapter)
-    .in('verse_number', verseNumbers)
-    .is('deleted_at', null);
-  if (softDeleteError) throw softDeleteError;
+  // 1. Update local AsyncStorage cache
+  try {
+    const cached = await AsyncStorage.getItem(cacheKey);
+    const annotations: ChapterAnnotations = cached
+      ? JSON.parse(cached)
+      : { highlights: [], notes: [] };
 
-  // Step 2: insert new highlights for each verse
-  const inserts = verses.map((v) => ({
-    user_id: userId,
-    translation_id: translationId,
-    book_id: bookId,
-    book_name: bookName,
-    chapter,
-    verse_number: v.verseNumber,
-    verse_text: v.verseText,
-    color,
-    deleted_at: null,
-  }));
+    const updatedHighlights = annotations.highlights.filter(
+      (h) => !verseNumbers.includes(h.verse_number)
+    );
 
-  const { error: insertError } = await supabase
-    .from('bible_highlights')
-    .insert(inserts);
-  if (insertError) throw insertError;
+    for (const v of verses) {
+      updatedHighlights.push({
+        id: `hl-${Date.now()}-${v.verseNumber}`,
+        user_id: effectiveUserId,
+        translation_id: translationId,
+        book_id: bookId,
+        book_name: bookName,
+        chapter,
+        verse_number: v.verseNumber,
+        verse_text: v.verseText,
+        color,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        deleted_at: null,
+      });
+    }
+
+    await AsyncStorage.setItem(
+      cacheKey,
+      JSON.stringify({ ...annotations, highlights: updatedHighlights })
+    );
+  } catch {
+    // ignore
+  }
+
+  // 2. Sync to Supabase if authenticated
+  if (userId && userId !== 'guest') {
+    try {
+      await supabase
+        .from('bible_highlights')
+        .update({ deleted_at: new Date().toISOString() })
+        .eq('user_id', userId)
+        .eq('translation_id', translationId)
+        .eq('book_id', bookId)
+        .eq('chapter', chapter)
+        .in('verse_number', verseNumbers)
+        .is('deleted_at', null);
+
+      const inserts = verses.map((v) => ({
+        user_id: userId,
+        translation_id: translationId,
+        book_id: bookId,
+        book_name: bookName,
+        chapter,
+        verse_number: v.verseNumber,
+        verse_text: v.verseText,
+        color,
+        deleted_at: null,
+      }));
+
+      await supabase.from('bible_highlights').insert(inserts);
+    } catch {
+      // ignore
+    }
+  }
 }
 
 // ── Remove highlight ──────────────────────────────────────────────────────────
 export async function removeHighlight(
-  userId: string,
+  userId: string | null | undefined,
   translationId: string,
   bookId: string,
   chapter: number,
   verseNumber: number
 ): Promise<void> {
-  const { error } = await supabase
-    .from('bible_highlights')
-    .update({ deleted_at: new Date().toISOString() })
-    .eq('user_id', userId)
-    .eq('translation_id', translationId)
-    .eq('book_id', bookId)
-    .eq('chapter', chapter)
-    .eq('verse_number', verseNumber)
-    .is('deleted_at', null);
-  if (error) throw error;
+  await removeHighlightRange(userId, translationId, bookId, chapter, [verseNumber]);
 }
 
 export async function removeHighlightRange(
-  userId: string,
+  userId: string | null | undefined,
   translationId: string,
   bookId: string,
   chapter: number,
   verseNumbers: number[]
 ): Promise<void> {
   if (verseNumbers.length === 0) return;
-  const { error } = await supabase
-    .from('bible_highlights')
-    .update({ deleted_at: new Date().toISOString() })
-    .eq('user_id', userId)
-    .eq('translation_id', translationId)
-    .eq('book_id', bookId)
-    .eq('chapter', chapter)
-    .in('verse_number', verseNumbers)
-    .is('deleted_at', null);
-  if (error) throw error;
+  const effectiveUserId = userId || 'guest';
+  const cacheKey = annotationCacheKey(effectiveUserId, translationId, bookId, chapter);
+
+  // 1. Update local AsyncStorage cache
+  try {
+    const cached = await AsyncStorage.getItem(cacheKey);
+    if (cached) {
+      const annotations: ChapterAnnotations = JSON.parse(cached);
+      const updatedHighlights = annotations.highlights.filter(
+        (h) => !verseNumbers.includes(h.verse_number)
+      );
+      await AsyncStorage.setItem(
+        cacheKey,
+        JSON.stringify({ ...annotations, highlights: updatedHighlights })
+      );
+    }
+  } catch {
+    // ignore
+  }
+
+  // 2. Sync to Supabase if authenticated
+  if (userId && userId !== 'guest') {
+    try {
+      await supabase
+        .from('bible_highlights')
+        .update({ deleted_at: new Date().toISOString() })
+        .eq('user_id', userId)
+        .eq('translation_id', translationId)
+        .eq('book_id', bookId)
+        .eq('chapter', chapter)
+        .in('verse_number', verseNumbers)
+        .is('deleted_at', null);
+    } catch {
+      // ignore
+    }
+  }
 }
 
 // ── Upsert note ───────────────────────────────────────────────────────────────

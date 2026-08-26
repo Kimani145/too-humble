@@ -51,7 +51,6 @@ import {
   upsertNote,
   removeNote,
 } from '../../services/annotationService';
-import { VerseActionSheet } from '../../components/bible/VerseActionSheet';
 import { NoteEditorModal } from '../../components/bible/NoteEditorModal';
 import { FloatingActionBar } from '../../components/bible/FloatingActionBar';
 import { useAuth } from '../../context/AuthContext';
@@ -153,27 +152,40 @@ function ContentItem({
 
     // Psalmist-style left-accent highlight bar + translucent tint
     const hasHighlight = Boolean(highlightColor);
-    const bgTint = isSelected
-      ? `${colors.primary}22`
-      : hasHighlight
-      ? `${highlightColor}28`
-      : isHighlighted
-      ? `${colors.primary}18`
-      : 'transparent';
 
-    const borderLeftColor = hasHighlight
-      ? highlightColor
-      : isSelected
-      ? colors.primary
-      : 'transparent';
-    const borderLeftWidth = hasHighlight || isSelected ? 4 : 0;
+    let backgroundColor = 'transparent';
+    let borderLeftColor = 'transparent';
+    let borderLeftWidth = 0;
+    let borderTopWidth = 0;
+    let borderRightWidth = 0;
+    let borderBottomWidth = 1;
+    let borderBottomColor = colors.border;
+    let borderTopColor = 'transparent';
+    let borderRightColor = 'transparent';
 
-    const borderColor = isSelected
-      ? colors.primary
-      : isHighlighted
-      ? `${colors.primary}60`
-      : 'transparent';
-    const borderWidth = isSelected || isHighlighted ? 1.5 : 0;
+    if (isSelected) {
+      backgroundColor = colors.primary + '22';
+      borderLeftColor = highlightColor || colors.primary;
+      borderLeftWidth = 4;
+      borderTopWidth = 1.5;
+      borderRightWidth = 1.5;
+      borderBottomWidth = 1.5;
+      borderTopColor = colors.primary;
+      borderRightColor = colors.primary;
+      borderBottomColor = colors.primary;
+    } else if (hasHighlight) {
+      backgroundColor = `${highlightColor}30`;
+      borderLeftColor = highlightColor!;
+      borderLeftWidth = 4;
+      borderBottomWidth = 1;
+      borderBottomColor = colors.border;
+    } else if (isHighlighted) {
+      backgroundColor = colors.primary + '18';
+      borderLeftColor = colors.primary;
+      borderLeftWidth = 4;
+      borderBottomWidth = 1;
+      borderBottomColor = colors.border;
+    }
 
     return (
       <TouchableOpacity
@@ -183,11 +195,15 @@ function ContentItem({
         style={[
           styles.container,
           {
-            backgroundColor: bgTint,
+            backgroundColor,
             borderLeftColor,
             borderLeftWidth,
-            borderColor,
-            borderWidth,
+            borderTopColor,
+            borderTopWidth,
+            borderRightColor,
+            borderRightWidth,
+            borderBottomColor,
+            borderBottomWidth,
             borderRadius: hasHighlight || isSelected || isHighlighted ? BORDER_RADIUS.md : 0,
             marginVertical: hasHighlight || isSelected || isHighlighted ? 2 : 0,
             paddingVertical: SPACING.xs + 2,
@@ -317,8 +333,8 @@ export default function BibleScreen(): React.JSX.Element {
   const [annotations, setAnnotations] = useState<ChapterAnnotations>({ highlights: [], notes: [] });
   const [selectedRange, setSelectedRange] = useState<{ startVerse: number; endVerse: number } | null>(null);
   const [pendingStartVerse, setPendingStartVerse] = useState<number | null>(null);
-  const [actionSheetVerse, setActionSheetVerse] = useState<{ number: number; text: string } | null>(null);
   const [showNoteEditor, setShowNoteEditor] = useState<boolean>(false);
+  const [noteTarget, setNoteTarget] = useState<{ number: number; text: string; verseEnd?: number } | null>(null);
   const [isSavingAnnotation, setIsSavingAnnotation] = useState<boolean>(false);
 
   const [webFontSize, setWebFontSize] = useState<number>(16);
@@ -473,18 +489,17 @@ export default function BibleScreen(): React.JSX.Element {
       setIsLoadingChapter(true);
       setChapterError(null);
       setChapterData(null);
+      clearSelection();
       try {
         const data = await fetchChapter(tId, book.id, chapter);
         setChapterData(data);
-        if (user) {
-          const ann = await getChapterAnnotations(
-            user.id,
-            tId ?? translationId,
-            book.id,
-            chapter
-          );
-          setAnnotations(ann);
-        }
+        const ann = await getChapterAnnotations(
+          user?.id ?? 'guest',
+          tId ?? translationId,
+          book.id,
+          chapter
+        );
+        setAnnotations(ann);
         recordChapterRead(book.commonName, chapter).catch(() => {});
         setSelectedChapter(chapter);
         setIsOffline(false);
@@ -658,14 +673,37 @@ export default function BibleScreen(): React.JSX.Element {
 
   const handleApplyHighlightRange = useCallback(
     async (colorHex: string) => {
-      if (!user || !selectedBook || selectedChapter === null || !selectedRange) return;
+      if (!selectedBook || selectedChapter === null || !selectedRange) return;
       const verses = getSelectedVerseTexts();
       if (verses.length === 0) return;
       clearSelection();
+
+      // 1. Optimistic instant visual update
+      setAnnotations((prev) => {
+        const verseNums = verses.map((v) => v.verseNumber);
+        const filtered = prev.highlights.filter((h) => !verseNums.includes(h.verse_number));
+        const added = verses.map((v) => ({
+          id: `opt-${Date.now()}-${v.verseNumber}`,
+          user_id: user?.id ?? 'guest',
+          translation_id: translationId,
+          book_id: selectedBook.id,
+          book_name: selectedBook.commonName,
+          chapter: selectedChapter,
+          verse_number: v.verseNumber,
+          verse_text: v.verseText,
+          color: colorHex,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          deleted_at: null,
+        }));
+        return { ...prev, highlights: [...filtered, ...added] };
+      });
+
+      // 2. Persistent storage sync
       setIsSavingAnnotation(true);
       try {
         await upsertHighlightRange(
-          user.id,
+          user?.id ?? 'guest',
           translationId,
           selectedBook.id,
           selectedBook.commonName,
@@ -674,7 +712,7 @@ export default function BibleScreen(): React.JSX.Element {
           colorHex
         );
         const updated = await getChapterAnnotations(
-          user.id,
+          user?.id ?? 'guest',
           translationId,
           selectedBook.id,
           selectedChapter
@@ -688,23 +726,30 @@ export default function BibleScreen(): React.JSX.Element {
   );
 
   const handleRemoveHighlightRange = useCallback(async () => {
-    if (!user || !selectedBook || selectedChapter === null || !selectedRange) return;
+    if (!selectedBook || selectedChapter === null || !selectedRange) return;
     const verseNumbers = Array.from(
       { length: selectedRange.endVerse - selectedRange.startVerse + 1 },
       (_, i) => selectedRange.startVerse + i
     );
     clearSelection();
+
+    // Optimistic removal
+    setAnnotations((prev) => ({
+      ...prev,
+      highlights: prev.highlights.filter((h) => !verseNumbers.includes(h.verse_number)),
+    }));
+
     setIsSavingAnnotation(true);
     try {
       await removeHighlightRange(
-        user.id,
+        user?.id ?? 'guest',
         translationId,
         selectedBook.id,
         selectedChapter,
         verseNumbers
       );
       const updated = await getChapterAnnotations(
-        user.id,
+        user?.id ?? 'guest',
         translationId,
         selectedBook.id,
         selectedChapter
@@ -754,10 +799,9 @@ export default function BibleScreen(): React.JSX.Element {
           isSelected={inSelection}
           hasNote={item.type === 'verse' ? noteMap.has(item.number) : false}
           onPress={(number) => handleVersePress(number)}
-          onLongPress={(number, text) => {
+          onLongPress={(number) => {
             setSelectedRange({ startVerse: number, endVerse: number });
             setPendingStartVerse(null);
-            setActionSheetVerse({ number, text });
           }}
         />
       );
@@ -907,7 +951,7 @@ export default function BibleScreen(): React.JSX.Element {
           />
 
           {/* Psalmist-style Floating Action Bar */}
-          {selectedRange && actionSheetVerse === null && !showNoteEditor ? (
+          {selectedRange && !showNoteEditor ? (
             <FloatingActionBar
               startVerse={selectedRange.startVerse}
               endVerse={selectedRange.endVerse}
@@ -924,8 +968,9 @@ export default function BibleScreen(): React.JSX.Element {
               onOpenNoteModal={() => {
                 const verses = getSelectedVerseTexts();
                 const snippet = verses.map((v) => v.verseText).join(' ');
-                setActionSheetVerse({
+                setNoteTarget({
                   number: selectedRange.startVerse,
+                  verseEnd: selectedRange.endVerse,
                   text: snippet,
                 });
                 setShowNoteEditor(true);
@@ -935,121 +980,69 @@ export default function BibleScreen(): React.JSX.Element {
             />
           ) : null}
 
-          <VerseActionSheet
-            visible={actionSheetVerse !== null && !showNoteEditor}
-            verseNumber={actionSheetVerse?.number ?? 0}
-            verseText={actionSheetVerse?.text ?? ''}
-            existingHighlight={actionSheetVerse ? (highlightMap.get(actionSheetVerse.number) ?? null) : null}
-            hasNote={actionSheetVerse ? noteMap.has(actionSheetVerse.number) : false}
-            onHighlight={async (color) => {
-              if (!user || !selectedBook || !selectedChapter || !actionSheetVerse) return;
-              setIsSavingAnnotation(true);
-              try {
-                await upsertHighlight(
-                  user.id,
+          {showNoteEditor && noteTarget ? (
+            <NoteEditorModal
+              visible={showNoteEditor}
+              verseNumber={noteTarget.number}
+              verseText={noteTarget.text}
+              existingNote={noteMap.get(noteTarget.number)?.note_text ?? ''}
+              totalVerses={chapterData?.numberOfVerses ?? 150}
+              existingVerseEnd={noteTarget.verseEnd}
+              isSaving={isSavingAnnotation}
+              onSave={async (text, verseEnd) => {
+                if (!selectedBook || selectedChapter === null || !noteTarget) return;
+                setIsSavingAnnotation(true);
+                try {
+                  await upsertNote(
+                    user?.id ?? 'guest',
+                    translationId,
+                    selectedBook.id,
+                    selectedBook.commonName,
+                    selectedChapter,
+                    noteTarget.number,
+                    noteTarget.text,
+                    text,
+                    verseEnd
+                  );
+                  const updated = await getChapterAnnotations(
+                    user?.id ?? 'guest',
+                    translationId,
+                    selectedBook.id,
+                    selectedChapter
+                  );
+                  setAnnotations(updated);
+                } finally {
+                  setIsSavingAnnotation(false);
+                  setShowNoteEditor(false);
+                  setNoteTarget(null);
+                  clearSelection();
+                }
+              }}
+              onDelete={async () => {
+                if (!selectedBook || selectedChapter === null || !noteTarget) return;
+                await removeNote(
+                  user?.id ?? 'guest',
                   translationId,
                   selectedBook.id,
-                  selectedBook.commonName,
                   selectedChapter,
-                  actionSheetVerse.number,
-                  actionSheetVerse.text,
-                  color
+                  noteTarget.number
                 );
                 const updated = await getChapterAnnotations(
-                  user.id,
+                  user?.id ?? 'guest',
                   translationId,
                   selectedBook.id,
                   selectedChapter
                 );
                 setAnnotations(updated);
-              } finally {
-                setIsSavingAnnotation(false);
-                setActionSheetVerse(null);
-              }
-            }}
-            onRemoveHighlight={async () => {
-              if (!user || !selectedBook || !selectedChapter || !actionSheetVerse) return;
-              await removeHighlight(
-                user.id,
-                translationId,
-                selectedBook.id,
-                selectedChapter,
-                actionSheetVerse.number
-              );
-              const updated = await getChapterAnnotations(
-                user.id,
-                translationId,
-                selectedBook.id,
-                selectedChapter
-              );
-              setAnnotations(updated);
-              setActionSheetVerse(null);
-            }}
-            onAddNote={() => setShowNoteEditor(true)}
-            onClose={() => setActionSheetVerse(null)}
-          />
-
-          <NoteEditorModal
-            visible={showNoteEditor}
-            verseNumber={actionSheetVerse?.number ?? 0}
-            verseText={actionSheetVerse?.text ?? ''}
-            existingNote={actionSheetVerse ? (noteMap.get(actionSheetVerse.number)?.note_text ?? '') : ''}
-            totalVerses={chapterData?.numberOfVerses ?? 150}
-            existingVerseEnd={
-              actionSheetVerse
-                ? (noteMap.get(actionSheetVerse.number)?.verse_end ?? undefined)
-                : undefined
-            }
-            isSaving={isSavingAnnotation}
-            onSave={async (text, verseEnd) => {
-              if (!user || !selectedBook || !selectedChapter || !actionSheetVerse) return;
-              setIsSavingAnnotation(true);
-              try {
-                await upsertNote(
-                  user.id,
-                  translationId,
-                  selectedBook.id,
-                  selectedBook.commonName,
-                  selectedChapter,
-                  actionSheetVerse.number,
-                  actionSheetVerse.text,
-                  text,
-                  verseEnd
-                );
-                const updated = await getChapterAnnotations(
-                  user.id,
-                  translationId,
-                  selectedBook.id,
-                  selectedChapter
-                );
-                setAnnotations(updated);
-              } finally {
-                setIsSavingAnnotation(false);
                 setShowNoteEditor(false);
-                setActionSheetVerse(null);
-              }
-            }}
-            onDelete={async () => {
-              if (!user || !selectedBook || !selectedChapter || !actionSheetVerse) return;
-              await removeNote(
-                user.id,
-                translationId,
-                selectedBook.id,
-                selectedChapter,
-                actionSheetVerse.number
-              );
-              const updated = await getChapterAnnotations(
-                user.id,
-                translationId,
-                selectedBook.id,
-                selectedChapter
-              );
-              setAnnotations(updated);
-              setShowNoteEditor(false);
-              setActionSheetVerse(null);
-            }}
-            onClose={() => setShowNoteEditor(false)}
-          />
+                setNoteTarget(null);
+              }}
+              onClose={() => {
+                setShowNoteEditor(false);
+                setNoteTarget(null);
+              }}
+            />
+          ) : null}
 
           {/* Navigation Bar at Bottom of Chapter */}
           <View style={bibleStyles.navBar}>

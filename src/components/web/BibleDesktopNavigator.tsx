@@ -133,27 +133,40 @@ function VerseRow({
       .trim();
 
     const hasHighlight = Boolean(highlightColor);
-    const bgTint = isSelected
-      ? `${colors.primary}22`
-      : hasHighlight
-      ? `${highlightColor}28`
-      : isHighlighted
-      ? `${colors.primary}18`
-      : 'transparent';
 
-    const borderLeftColor = hasHighlight
-      ? highlightColor
-      : isSelected
-      ? colors.primary
-      : 'transparent';
-    const borderLeftWidth = hasHighlight || isSelected ? 4 : 0;
+    let backgroundColor = 'transparent';
+    let borderLeftColor = 'transparent';
+    let borderLeftWidth = 0;
+    let borderTopWidth = 0;
+    let borderRightWidth = 0;
+    let borderBottomWidth = 1;
+    let borderBottomColor = colors.border;
+    let borderTopColor = 'transparent';
+    let borderRightColor = 'transparent';
 
-    const borderColor = isSelected
-      ? colors.primary
-      : isHighlighted
-      ? `${colors.primary}60`
-      : 'transparent';
-    const borderWidth = isSelected || isHighlighted ? 1.5 : 0;
+    if (isSelected) {
+      backgroundColor = colors.primary + '22';
+      borderLeftColor = highlightColor || colors.primary;
+      borderLeftWidth = 4;
+      borderTopWidth = 1.5;
+      borderRightWidth = 1.5;
+      borderBottomWidth = 1.5;
+      borderTopColor = colors.primary;
+      borderRightColor = colors.primary;
+      borderBottomColor = colors.primary;
+    } else if (hasHighlight) {
+      backgroundColor = `${highlightColor}30`;
+      borderLeftColor = highlightColor!;
+      borderLeftWidth = 4;
+      borderBottomWidth = 1;
+      borderBottomColor = colors.border;
+    } else if (isHighlighted) {
+      backgroundColor = colors.primary + '18';
+      borderLeftColor = colors.primary;
+      borderLeftWidth = 4;
+      borderBottomWidth = 1;
+      borderBottomColor = colors.border;
+    }
 
     return (
       <TouchableOpacity
@@ -163,11 +176,15 @@ function VerseRow({
         style={[
           styles.verseRow,
           {
-            backgroundColor: bgTint,
+            backgroundColor,
             borderLeftColor,
             borderLeftWidth,
-            borderColor,
-            borderWidth,
+            borderTopColor,
+            borderTopWidth,
+            borderRightColor,
+            borderRightWidth,
+            borderBottomColor,
+            borderBottomWidth,
             borderRadius: hasHighlight || isSelected || isHighlighted ? 6 : 0,
             paddingVertical: 8,
             paddingHorizontal: 12,
@@ -345,14 +362,37 @@ export default function BibleDesktopNavigator({
 
   const handleApplyHighlightRange = useCallback(
     async (colorHex: string) => {
-      if (!user || !selectedBook || selectedChapter === null || !selectedRange) return;
+      if (!selectedBook || selectedChapter === null || !selectedRange) return;
       const verses = getSelectedVerseTexts();
       if (verses.length === 0) return;
       clearSelection();
+
+      // 1. Optimistic instant visual update
+      setAnnotations((prev) => {
+        const verseNums = verses.map((v) => v.verseNumber);
+        const filtered = prev.highlights.filter((h) => !verseNums.includes(h.verse_number));
+        const added = verses.map((v) => ({
+          id: `opt-${Date.now()}-${v.verseNumber}`,
+          user_id: user?.id ?? 'guest',
+          translation_id: translationId,
+          book_id: selectedBook.id,
+          book_name: selectedBook.commonName,
+          chapter: selectedChapter,
+          verse_number: v.verseNumber,
+          verse_text: v.verseText,
+          color: colorHex,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          deleted_at: null,
+        }));
+        return { ...prev, highlights: [...filtered, ...added] };
+      });
+
+      // 2. Persistent storage sync
       setIsSavingAnnotation(true);
       try {
         await upsertHighlightRange(
-          user.id,
+          user?.id ?? 'guest',
           translationId,
           selectedBook.id,
           selectedBook.commonName,
@@ -361,7 +401,7 @@ export default function BibleDesktopNavigator({
           colorHex
         );
         const updated = await getChapterAnnotations(
-          user.id,
+          user?.id ?? 'guest',
           translationId,
           selectedBook.id,
           selectedChapter
@@ -375,23 +415,30 @@ export default function BibleDesktopNavigator({
   );
 
   const handleRemoveHighlightRange = useCallback(async () => {
-    if (!user || !selectedBook || selectedChapter === null || !selectedRange) return;
+    if (!selectedBook || selectedChapter === null || !selectedRange) return;
     const verseNumbers = Array.from(
       { length: selectedRange.endVerse - selectedRange.startVerse + 1 },
       (_, i) => selectedRange.startVerse + i
     );
     clearSelection();
+
+    // Optimistic removal
+    setAnnotations((prev) => ({
+      ...prev,
+      highlights: prev.highlights.filter((h) => !verseNumbers.includes(h.verse_number)),
+    }));
+
     setIsSavingAnnotation(true);
     try {
       await removeHighlightRange(
-        user.id,
+        user?.id ?? 'guest',
         translationId,
         selectedBook.id,
         selectedChapter,
         verseNumbers
       );
       const updated = await getChapterAnnotations(
-        user.id,
+        user?.id ?? 'guest',
         translationId,
         selectedBook.id,
         selectedChapter
@@ -985,11 +1032,11 @@ export default function BibleDesktopNavigator({
             existingVerseEnd={noteTarget.verseEnd}
             isSaving={isSavingAnnotation}
             onSave={async (text, verseEnd) => {
-              if (!user || !selectedBook || selectedChapter === null || !noteTarget) return;
+              if (!selectedBook || selectedChapter === null || !noteTarget) return;
               setIsSavingAnnotation(true);
               try {
                 await upsertNote(
-                  user.id,
+                  user?.id ?? 'guest',
                   translationId,
                   selectedBook.id,
                   selectedBook.commonName,
@@ -1000,7 +1047,7 @@ export default function BibleDesktopNavigator({
                   verseEnd
                 );
                 const updated = await getChapterAnnotations(
-                  user.id,
+                  user?.id ?? 'guest',
                   translationId,
                   selectedBook.id,
                   selectedChapter
@@ -1014,16 +1061,16 @@ export default function BibleDesktopNavigator({
               }
             }}
             onDelete={async () => {
-              if (!user || !selectedBook || selectedChapter === null || !noteTarget) return;
+              if (!selectedBook || selectedChapter === null || !noteTarget) return;
               await removeNote(
-                user.id,
+                user?.id ?? 'guest',
                 translationId,
                 selectedBook.id,
                 selectedChapter,
                 noteTarget.number
               );
               const updated = await getChapterAnnotations(
-                user.id,
+                user?.id ?? 'guest',
                 translationId,
                 selectedBook.id,
                 selectedChapter
