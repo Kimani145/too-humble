@@ -15,6 +15,7 @@ import * as Sentry from '@sentry/react-native';
 
 import { ErrorBoundary } from '../src/components/ErrorBoundary';
 import { requestAdsConsent } from '../src/utils/adsConsent';
+import { initializeMobileAds } from '../src/utils/adInit';
 import { Platform } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
 import { flushOfflineQueue } from '../src/services/offlineFlushService';
@@ -46,6 +47,7 @@ function RootNavigator(): React.JSX.Element {
   const { isLoading } = useAuth();
 
   useEffect(() => {
+    initializeMobileAds().catch(() => {});
     requestAdsConsent();
   }, []);
 
