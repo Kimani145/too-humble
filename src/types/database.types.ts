@@ -305,6 +305,7 @@ export type BibleHighlight = {
   color:          string;
   created_at:     string;
   updated_at:     string;
+  deleted_at:     string | null;
 };
 
 export type BibleHighlightInsert = {
@@ -319,6 +320,7 @@ export type BibleHighlightInsert = {
   color?: string;
   created_at?: string;
   updated_at?: string;
+  deleted_at?: string | null;
 };
 
 export type BibleHighlightUpdate = Partial<BibleHighlightInsert>;
@@ -335,6 +337,7 @@ export type BibleNote = {
   note_text:      string;
   created_at:     string;
   updated_at:     string;
+  verse_end:      number | null;
 };
 
 export type BibleNoteInsert = {
@@ -349,6 +352,7 @@ export type BibleNoteInsert = {
   note_text: string;
   created_at?: string;
   updated_at?: string;
+  verse_end?: number | null;
 };
 
 export type BibleNoteUpdate = Partial<BibleNoteInsert>;

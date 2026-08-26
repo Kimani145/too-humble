@@ -19,7 +19,8 @@ export async function getChapterAnnotations(
         .eq('user_id', userId)
         .eq('translation_id', translationId)
         .eq('book_id', bookId)
-        .eq('chapter', chapter),
+        .eq('chapter', chapter)
+        .is('deleted_at', null),
       supabase.from('bible_notes').select('*')
         .eq('user_id', userId)
         .eq('translation_id', translationId)
@@ -56,13 +57,33 @@ export async function upsertHighlight(
   verseText: string,
   color: string
 ): Promise<void> {
-  const { error } = await supabase.from('bible_highlights').upsert(
-    { user_id: userId, translation_id: translationId, book_id: bookId,
-      book_name: bookName, chapter, verse_number: verseNumber,
-      verse_text: verseText, color },
-    { onConflict: 'user_id,translation_id,book_id,chapter,verse_number' }
-  );
-  if (error) throw error;
+  // Step 1: soft-delete any existing active highlight for this verse
+  const { error: softDeleteError } = await supabase
+    .from('bible_highlights')
+    .update({ deleted_at: new Date().toISOString() })
+    .eq('user_id', userId)
+    .eq('translation_id', translationId)
+    .eq('book_id', bookId)
+    .eq('chapter', chapter)
+    .eq('verse_number', verseNumber)
+    .is('deleted_at', null);
+  if (softDeleteError) throw softDeleteError;
+
+  // Step 2: insert the new highlight
+  const { error: insertError } = await supabase
+    .from('bible_highlights')
+    .insert({
+      user_id: userId,
+      translation_id: translationId,
+      book_id: bookId,
+      book_name: bookName,
+      chapter,
+      verse_number: verseNumber,
+      verse_text: verseText,
+      color,
+      deleted_at: null,
+    });
+  if (insertError) throw insertError;
 }
 
 // ── Remove highlight ──────────────────────────────────────────────────────────
@@ -73,10 +94,15 @@ export async function removeHighlight(
   chapter: number,
   verseNumber: number
 ): Promise<void> {
-  const { error } = await supabase.from('bible_highlights').delete()
-    .eq('user_id', userId).eq('translation_id', translationId)
-    .eq('book_id', bookId).eq('chapter', chapter)
-    .eq('verse_number', verseNumber);
+  const { error } = await supabase
+    .from('bible_highlights')
+    .update({ deleted_at: new Date().toISOString() })
+    .eq('user_id', userId)
+    .eq('translation_id', translationId)
+    .eq('book_id', bookId)
+    .eq('chapter', chapter)
+    .eq('verse_number', verseNumber)
+    .is('deleted_at', null);
   if (error) throw error;
 }
 
@@ -89,12 +115,21 @@ export async function upsertNote(
   chapter: number,
   verseNumber: number,
   verseText: string,
-  noteText: string
+  noteText: string,
+  verseEnd?: number
 ): Promise<void> {
   const { error } = await supabase.from('bible_notes').upsert(
-    { user_id: userId, translation_id: translationId, book_id: bookId,
-      book_name: bookName, chapter, verse_number: verseNumber,
-      verse_text: verseText, note_text: noteText },
+    {
+      user_id: userId,
+      translation_id: translationId,
+      book_id: bookId,
+      book_name: bookName,
+      chapter,
+      verse_number: verseNumber,
+      verse_text: verseText,
+      note_text: noteText,
+      verse_end: verseEnd ?? verseNumber,
+    },
     { onConflict: 'user_id,translation_id,book_id,chapter,verse_number' }
   );
   if (error) throw error;
@@ -122,7 +157,9 @@ export async function getUserAnnotations(userId: string): Promise<{
 }> {
   const [hlRes, noteRes] = await Promise.all([
     supabase.from('bible_highlights').select('*')
-      .eq('user_id', userId).order('book_id').order('chapter').order('verse_number'),
+      .eq('user_id', userId)
+      .is('deleted_at', null)
+      .order('book_id').order('chapter').order('verse_number'),
     supabase.from('bible_notes').select('*')
       .eq('user_id', userId).order('book_id').order('chapter').order('verse_number'),
   ]);
