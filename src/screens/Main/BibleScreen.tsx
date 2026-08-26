@@ -661,6 +661,7 @@ export default function BibleScreen(): React.JSX.Element {
       if (!user || !selectedBook || selectedChapter === null || !selectedRange) return;
       const verses = getSelectedVerseTexts();
       if (verses.length === 0) return;
+      clearSelection();
       setIsSavingAnnotation(true);
       try {
         await upsertHighlightRange(
@@ -681,7 +682,6 @@ export default function BibleScreen(): React.JSX.Element {
         setAnnotations(updated);
       } finally {
         setIsSavingAnnotation(false);
-        clearSelection();
       }
     },
     [user, selectedBook, selectedChapter, selectedRange, getSelectedVerseTexts, translationId, clearSelection]
@@ -693,6 +693,7 @@ export default function BibleScreen(): React.JSX.Element {
       { length: selectedRange.endVerse - selectedRange.startVerse + 1 },
       (_, i) => selectedRange.startVerse + i
     );
+    clearSelection();
     setIsSavingAnnotation(true);
     try {
       await removeHighlightRange(
@@ -711,7 +712,6 @@ export default function BibleScreen(): React.JSX.Element {
       setAnnotations(updated);
     } finally {
       setIsSavingAnnotation(false);
-      clearSelection();
     }
   }, [user, selectedBook, selectedChapter, selectedRange, translationId, clearSelection]);
 

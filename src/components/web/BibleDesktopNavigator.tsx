@@ -1,9 +1,4 @@
-// =============================================================================
-// TOO HUMBLE - BIBLE DESKTOP NAVIGATOR
-// Desktop-native side-by-side Bible navigation and reading tool
-// =============================================================================
-
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -12,8 +7,10 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   TouchableOpacityProps,
+  Share,
 } from 'react-native';
 import { useTheme } from '../../context/ThemeContext';
+import { useAuth } from '../../context/AuthContext';
 import {
   fetchBooks,
   fetchChapter,
@@ -28,7 +25,19 @@ import {
   AOLabBook,
   AOLabChapter,
   AOLabContentItem,
+  ChapterAnnotations,
+  BibleHighlight,
+  BibleNote,
 } from '../../types/database.types';
+import {
+  getChapterAnnotations,
+  upsertHighlightRange,
+  removeHighlightRange,
+  upsertNote,
+  removeNote,
+} from '../../services/annotationService';
+import { FloatingActionBar } from '../bible/FloatingActionBar';
+import { NoteEditorModal } from '../bible/NoteEditorModal';
 import { recordChapterRead } from '../../services/streakService';
 import { BUNDLED_TRANSLATIONS, DEUTEROCANONICAL_COMMON_NAMES, DEFAULT_TRANSLATION_ID, BibleTranslationMeta } from '../../constants/bibleTranslations';
 import BibleOfflineState from '../BibleOfflineState';
@@ -97,9 +106,23 @@ interface VerseRowProps {
   item: AOLabContentItem;
   fontSize: number;
   isHighlighted?: boolean;
+  highlightColor?: string;
+  isSelected?: boolean;
+  hasNote?: boolean;
+  onPress?: (number: number, text: string) => void;
+  onLongPress?: (number: number, text: string) => void;
 }
 
-function VerseRow({ item, fontSize, isHighlighted }: VerseRowProps): React.JSX.Element {
+function VerseRow({
+  item,
+  fontSize,
+  isHighlighted,
+  highlightColor,
+  isSelected,
+  hasNote,
+  onPress,
+  onLongPress,
+}: VerseRowProps): React.JSX.Element {
   const { colors } = useTheme();
 
   if (item.type === 'verse') {
@@ -108,24 +131,76 @@ function VerseRow({ item, fontSize, isHighlighted }: VerseRowProps): React.JSX.E
       .join(' ')
       .replace(/\s+/g, ' ')
       .trim();
+
+    const hasHighlight = Boolean(highlightColor);
+    const bgTint = isSelected
+      ? `${colors.primary}22`
+      : hasHighlight
+      ? `${highlightColor}28`
+      : isHighlighted
+      ? `${colors.primary}18`
+      : 'transparent';
+
+    const borderLeftColor = hasHighlight
+      ? highlightColor
+      : isSelected
+      ? colors.primary
+      : 'transparent';
+    const borderLeftWidth = hasHighlight || isSelected ? 4 : 0;
+
+    const borderColor = isSelected
+      ? colors.primary
+      : isHighlighted
+      ? `${colors.primary}60`
+      : 'transparent';
+    const borderWidth = isSelected || isHighlighted ? 1.5 : 0;
+
     return (
-      <View
+      <TouchableOpacity
+        activeOpacity={0.7}
+        onPress={() => onPress?.(item.number, text)}
+        onLongPress={() => onLongPress?.(item.number, text)}
         style={[
           styles.verseRow,
-          isHighlighted && {
-            backgroundColor: colors.primary + '18',
-            borderLeftColor: colors.primary,
-            borderLeftWidth: 4,
-            borderRadius: 6,
+          {
+            backgroundColor: bgTint,
+            borderLeftColor,
+            borderLeftWidth,
+            borderColor,
+            borderWidth,
+            borderRadius: hasHighlight || isSelected || isHighlighted ? 6 : 0,
             paddingVertical: 8,
             paddingHorizontal: 12,
-            marginVertical: 2,
+            marginVertical: hasHighlight || isSelected || isHighlighted ? 2 : 0,
           },
         ]}
       >
-        <Text style={[styles.verseNumber, { color: isHighlighted ? colors.primary : colors.textMuted, fontWeight: isHighlighted ? '800' : '600' }]}>
-          {item.number} {isHighlighted ? '📍' : ''}
-        </Text>
+        <View style={{ position: 'relative', width: 32, alignItems: 'flex-start' }}>
+          <Text
+            style={[
+              styles.verseNumber,
+              {
+                color: isSelected ? colors.primary : colors.textMuted,
+                fontWeight: isHighlighted || isSelected ? '800' : '600',
+              },
+            ]}
+          >
+            {item.number} {isHighlighted ? '📍' : ''}
+          </Text>
+          {hasNote ? (
+            <View
+              style={{
+                position: 'absolute',
+                top: 0,
+                right: 4,
+                width: 6,
+                height: 6,
+                borderRadius: 3,
+                backgroundColor: colors.accent,
+              }}
+            />
+          ) : null}
+        </View>
         <Text
           style={[
             styles.verseText,
@@ -138,7 +213,7 @@ function VerseRow({ item, fontSize, isHighlighted }: VerseRowProps): React.JSX.E
         >
           {text}
         </Text>
-      </View>
+      </TouchableOpacity>
     );
   }
 
@@ -170,6 +245,7 @@ export default function BibleDesktopNavigator({
   targetChapter,
   targetVerse,
 }: BibleDesktopNavigatorProps): React.JSX.Element {
+  const { user } = useAuth();
   const { colors } = useTheme();
   const [view, setView] = useState<DesktopView>('browse');
 
@@ -186,6 +262,166 @@ export default function BibleDesktopNavigator({
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [availableTranslations, setAvailableTranslations] = useState<BibleTranslationMeta[]>(propAvailableTranslations);
+
+  const [annotations, setAnnotations] = useState<ChapterAnnotations>({ highlights: [], notes: [] });
+  const [selectedRange, setSelectedRange] = useState<{ startVerse: number; endVerse: number } | null>(null);
+  const [pendingStartVerse, setPendingStartVerse] = useState<number | null>(null);
+  const [showNoteEditor, setShowNoteEditor] = useState<boolean>(false);
+  const [noteTarget, setNoteTarget] = useState<{ number: number; text: string; verseEnd?: number } | null>(null);
+  const [isSavingAnnotation, setIsSavingAnnotation] = useState<boolean>(false);
+
+  const loadAnnotationsForChapter = useCallback(
+    async (bookId: string, chapter: number, tId: string = translationId) => {
+      if (user) {
+        try {
+          const ann = await getChapterAnnotations(user.id, tId, bookId, chapter);
+          setAnnotations(ann);
+        } catch {
+          // ignore
+        }
+      }
+    },
+    [user, translationId]
+  );
+
+  const handleVersePress = useCallback(
+    (verseNum: number) => {
+      if (pendingStartVerse === null) {
+        setPendingStartVerse(verseNum);
+        setSelectedRange({ startVerse: verseNum, endVerse: verseNum });
+      } else if (pendingStartVerse === verseNum) {
+        if (selectedRange?.startVerse === verseNum && selectedRange?.endVerse === verseNum) {
+          setPendingStartVerse(null);
+          setSelectedRange(null);
+        } else {
+          setSelectedRange({ startVerse: verseNum, endVerse: verseNum });
+          setPendingStartVerse(null);
+        }
+      } else {
+        const start = Math.min(pendingStartVerse, verseNum);
+        const end = Math.max(pendingStartVerse, verseNum);
+        setSelectedRange({ startVerse: start, endVerse: end });
+        setPendingStartVerse(null);
+      }
+    },
+    [pendingStartVerse, selectedRange]
+  );
+
+  const clearSelection = useCallback(() => {
+    setPendingStartVerse(null);
+    setSelectedRange(null);
+  }, []);
+
+  const highlightMap = new Map<number, BibleHighlight>(
+    annotations.highlights.map((h) => [h.verse_number, h])
+  );
+  const noteMap = new Map<number, BibleNote>();
+  for (const note of annotations.notes) {
+    const end = note.verse_end ?? note.verse_number;
+    for (let v = note.verse_number; v <= end; v++) {
+      noteMap.set(v, note);
+    }
+  }
+
+  const getSelectedVerseTexts = useCallback((): { verseNumber: number; verseText: string }[] => {
+    if (!selectedRange || !chapterData) return [];
+    const results: { verseNumber: number; verseText: string }[] = [];
+    for (const item of chapterData.content) {
+      if (
+        item.type === 'verse' &&
+        item.number >= selectedRange.startVerse &&
+        item.number <= selectedRange.endVerse
+      ) {
+        const text = item.content
+          .map((c) => (typeof c === 'string' ? c : c.text || ''))
+          .join(' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+        results.push({ verseNumber: item.number, verseText: text });
+      }
+    }
+    return results;
+  }, [selectedRange, chapterData]);
+
+  const handleApplyHighlightRange = useCallback(
+    async (colorHex: string) => {
+      if (!user || !selectedBook || selectedChapter === null || !selectedRange) return;
+      const verses = getSelectedVerseTexts();
+      if (verses.length === 0) return;
+      clearSelection();
+      setIsSavingAnnotation(true);
+      try {
+        await upsertHighlightRange(
+          user.id,
+          translationId,
+          selectedBook.id,
+          selectedBook.commonName,
+          selectedChapter,
+          verses,
+          colorHex
+        );
+        const updated = await getChapterAnnotations(
+          user.id,
+          translationId,
+          selectedBook.id,
+          selectedChapter
+        );
+        setAnnotations(updated);
+      } finally {
+        setIsSavingAnnotation(false);
+      }
+    },
+    [user, selectedBook, selectedChapter, selectedRange, getSelectedVerseTexts, translationId, clearSelection]
+  );
+
+  const handleRemoveHighlightRange = useCallback(async () => {
+    if (!user || !selectedBook || selectedChapter === null || !selectedRange) return;
+    const verseNumbers = Array.from(
+      { length: selectedRange.endVerse - selectedRange.startVerse + 1 },
+      (_, i) => selectedRange.startVerse + i
+    );
+    clearSelection();
+    setIsSavingAnnotation(true);
+    try {
+      await removeHighlightRange(
+        user.id,
+        translationId,
+        selectedBook.id,
+        selectedChapter,
+        verseNumbers
+      );
+      const updated = await getChapterAnnotations(
+        user.id,
+        translationId,
+        selectedBook.id,
+        selectedChapter
+      );
+      setAnnotations(updated);
+    } finally {
+      setIsSavingAnnotation(false);
+    }
+  }, [user, selectedBook, selectedChapter, selectedRange, translationId, clearSelection]);
+
+  const handleShareRange = useCallback(async () => {
+    if (!selectedBook || selectedChapter === null || !selectedRange) return;
+    const verses = getSelectedVerseTexts();
+    const joinedText = verses.map((v) => `${v.verseNumber}. ${v.verseText}`).join(' ');
+    const rangeLabel =
+      selectedRange.startVerse === selectedRange.endVerse
+        ? `v. ${selectedRange.startVerse}`
+        : `vv. ${selectedRange.startVerse}–${selectedRange.endVerse}`;
+
+    try {
+      await Share.share({
+        title: `${selectedBook.commonName} ${selectedChapter}:${rangeLabel}`,
+        message: `"${joinedText}"\n— ${selectedBook.commonName} ${selectedChapter}:${rangeLabel} (${translationId})\n\nShared from Too Humble 🙏`,
+      });
+    } catch {
+      // ignore
+    } finally {
+      clearSelection();
+    }
+  }, [selectedBook, selectedChapter, selectedRange, getSelectedVerseTexts, translationId, clearSelection]);
 
   React.useEffect(() => {
     if (propOtBooks.length > 0) setOtBooks(propOtBooks);
@@ -218,6 +454,7 @@ export default function BibleDesktopNavigator({
             try {
               const data = await fetchChapter(tId, found.id, restoreChapter);
               setChapterData(data);
+              loadAnnotationsForChapter(found.id, restoreChapter, tId);
               setView('reading');
               setIsOffline(false);
             } catch (err: unknown) {
@@ -326,11 +563,13 @@ export default function BibleDesktopNavigator({
   const handleChapterSelect = async (chapter: number) => {
     if (!selectedBook) return;
     setSelectedChapter(chapter);
+    clearSelection();
     setIsLoading(true);
     setError(null);
     try {
       const data = await fetchChapter(translationId, selectedBook.id, chapter);
       setChapterData(data);
+      loadAnnotationsForChapter(selectedBook.id, chapter, translationId);
       recordChapterRead(selectedBook.commonName, chapter).catch(() => {});
       setView('reading');
       setIsOffline(false);
@@ -678,16 +917,127 @@ export default function BibleDesktopNavigator({
         {/* Chapter Text */}
         <ScrollView showsVerticalScrollIndicator={false}>
           <View style={styles.chapterTextContainer}>
-            {chapterData.content.map((item, index) => (
-              <VerseRow
-                key={index}
-                item={item}
-                fontSize={fontSize}
-                isHighlighted={item.type === 'verse' && item.number === highlightVerseNum}
-              />
-            ))}
+            {chapterData.content.map((item, index) => {
+              const inSelection = Boolean(
+                selectedRange &&
+                item.type === 'verse' &&
+                item.number >= selectedRange.startVerse &&
+                item.number <= selectedRange.endVerse
+              );
+
+              return (
+                <VerseRow
+                  key={index}
+                  item={item}
+                  fontSize={fontSize}
+                  isHighlighted={item.type === 'verse' && item.number === highlightVerseNum}
+                  highlightColor={item.type === 'verse' ? (highlightMap.get(item.number)?.color ?? undefined) : undefined}
+                  isSelected={inSelection}
+                  hasNote={item.type === 'verse' ? noteMap.has(item.number) : false}
+                  onPress={(num) => handleVersePress(num)}
+                  onLongPress={(num) => {
+                    setSelectedRange({ startVerse: num, endVerse: num });
+                    setPendingStartVerse(null);
+                  }}
+                />
+              );
+            })}
           </View>
         </ScrollView>
+
+        {/* Psalmist-style Floating Action Bar */}
+        {selectedRange && !showNoteEditor ? (
+          <FloatingActionBar
+            startVerse={selectedRange.startVerse}
+            endVerse={selectedRange.endVerse}
+            isHighlighted={Array.from(
+              { length: selectedRange.endVerse - selectedRange.startVerse + 1 },
+              (_, i) => selectedRange.startVerse + i
+            ).some((v) => highlightMap.has(v))}
+            hasNote={Array.from(
+              { length: selectedRange.endVerse - selectedRange.startVerse + 1 },
+              (_, i) => selectedRange.startVerse + i
+            ).some((v) => noteMap.has(v))}
+            onApplyHighlight={handleApplyHighlightRange}
+            onRemoveHighlight={handleRemoveHighlightRange}
+            onOpenNoteModal={() => {
+              const verses = getSelectedVerseTexts();
+              const snippet = verses.map((v) => v.verseText).join(' ');
+              setNoteTarget({
+                number: selectedRange.startVerse,
+                verseEnd: selectedRange.endVerse,
+                text: snippet,
+              });
+              setShowNoteEditor(true);
+            }}
+            onShare={handleShareRange}
+            onClearSelection={clearSelection}
+          />
+        ) : null}
+
+        {showNoteEditor && noteTarget ? (
+          <NoteEditorModal
+            visible={showNoteEditor}
+            verseNumber={noteTarget.number}
+            verseText={noteTarget.text}
+            existingNote={noteMap.get(noteTarget.number)?.note_text ?? ''}
+            totalVerses={chapterData.numberOfVerses ?? 150}
+            existingVerseEnd={noteTarget.verseEnd}
+            isSaving={isSavingAnnotation}
+            onSave={async (text, verseEnd) => {
+              if (!user || !selectedBook || selectedChapter === null || !noteTarget) return;
+              setIsSavingAnnotation(true);
+              try {
+                await upsertNote(
+                  user.id,
+                  translationId,
+                  selectedBook.id,
+                  selectedBook.commonName,
+                  selectedChapter,
+                  noteTarget.number,
+                  noteTarget.text,
+                  text,
+                  verseEnd
+                );
+                const updated = await getChapterAnnotations(
+                  user.id,
+                  translationId,
+                  selectedBook.id,
+                  selectedChapter
+                );
+                setAnnotations(updated);
+              } finally {
+                setIsSavingAnnotation(false);
+                setShowNoteEditor(false);
+                setNoteTarget(null);
+                clearSelection();
+              }
+            }}
+            onDelete={async () => {
+              if (!user || !selectedBook || selectedChapter === null || !noteTarget) return;
+              await removeNote(
+                user.id,
+                translationId,
+                selectedBook.id,
+                selectedChapter,
+                noteTarget.number
+              );
+              const updated = await getChapterAnnotations(
+                user.id,
+                translationId,
+                selectedBook.id,
+                selectedChapter
+              );
+              setAnnotations(updated);
+              setShowNoteEditor(false);
+              setNoteTarget(null);
+            }}
+            onClose={() => {
+              setShowNoteEditor(false);
+              setNoteTarget(null);
+            }}
+          />
+        ) : null}
       </View>
     );
   }
